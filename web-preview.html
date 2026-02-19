@@ -9,29 +9,37 @@
 <script>
 tailwind.config = {
   theme: { extend: { colors: {
-    amber:  { 50:'#fffbeb',100:'#fef3c7',200:'#fde68a',300:'#fcd34d',400:'#fbbf24',500:'#f59e0b',600:'#d97706',700:'#b45309',800:'#92400e',900:'#78350f' },
-    stone:  { 50:'#fafaf9',100:'#f5f5f4',200:'#e7e5e4',300:'#d6d3d1',400:'#a8a29e',500:'#78716c',600:'#57534e',700:'#44403c',800:'#292524',900:'#1c1917' }
+    amber:  { 50:'#fdf8f0',100:'#f8eedc',200:'#f0d8b0',300:'#e4bc7e',400:'#d4a04e',500:'#b8823a',600:'#9a6a2e',700:'#7c5224',800:'#5e3d1a',900:'#402810' },
+    stone:  { 50:'#f9f6f2',100:'#f2ede5',200:'#e4dbd0',300:'#d0c4b4',400:'#b0a090',500:'#8e7e6c',600:'#6e6050',700:'#52473a',800:'#38302a',900:'#201c16' }
   }}}
 }
 </script>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
 <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <style>
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-  body{background:#fafaf9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;margin:0}
-  #root{max-width:430px;margin:0 auto;min-height:100vh;position:relative;background:#fafaf9;box-shadow:0 0 40px rgba(0,0,0,.12)}
+  body{background:#f9f6f2;font-family:'DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;margin:0}
+  #root{max-width:430px;margin:0 auto;min-height:100vh;position:relative;background:#f9f6f2;box-shadow:0 0 60px rgba(30,16,8,.15)}
   ::-webkit-scrollbar{display:none}
   .no-scroll{overflow:hidden}
-  .fade-in{animation:fadeIn .2s ease}
-  @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-  .gradient-card{background:linear-gradient(135deg,#b45309 0%,#f59e0b 100%)}
+  .fade-in{animation:fadeIn .22s ease}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+  .gradient-card{background:linear-gradient(145deg,#1c0e06 0%,#4a2c12 45%,#7c5224 100%)}
   input,textarea,select{outline:none}
-  .modal-bg{background:rgba(0,0,0,.5);backdrop-filter:blur(4px)}
-  #loading-screen{position:fixed;inset:0;background:#fafaf9;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;transition:opacity .4s ease}
+  .modal-bg{background:rgba(16,10,4,.58);backdrop-filter:blur(6px)}
+  #loading-screen{position:fixed;inset:0;background:#f9f6f2;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;transition:opacity .4s ease}
   #loading-screen.hidden{opacity:0;pointer-events:none}
-  .spinner{width:44px;height:44px;border:3px solid #fde68a;border-top-color:#f59e0b;border-radius:50%;animation:spin .8s linear infinite;margin-bottom:16px}
+  .spinner{width:44px;height:44px;border:3px solid #f0d8b0;border-top-color:#b8823a;border-radius:50%;animation:spin .8s linear infinite;margin-bottom:16px}
+  .shadow-sm{box-shadow:0 1px 10px rgba(30,16,8,.07)!important}
+  .shadow-md{box-shadow:0 3px 18px rgba(30,16,8,.1)!important}
+  .shadow-lg{box-shadow:0 6px 28px rgba(30,16,8,.12)!important}
+  .shadow-xl{box-shadow:0 10px 36px rgba(30,16,8,.14)!important}
+  .shadow-2xl{box-shadow:0 14px 44px rgba(30,16,8,.16)!important}
+  .shadow-amber-200{box-shadow:0 4px 16px rgba(184,130,58,.28)!important}
   @keyframes spin{to{transform:rotate(360deg)}}
   .toast-slide{animation:toastIn .35s cubic-bezier(.34,1.56,.64,1) forwards}
   @keyframes toastIn{from{opacity:0;transform:translateY(-20px) scale(.88)}to{opacity:1;transform:none}}
@@ -249,11 +257,11 @@ function Modal({open,onClose,title,children,size='md'}){
 
 function Badge({label,variant='neutral'}){
   const v={
-    success:'bg-green-100 text-green-700',
+    success:'bg-emerald-50 text-emerald-700',
     warning:'bg-amber-100 text-amber-700',
-    danger:'bg-red-100 text-red-600',
-    info:'bg-blue-100 text-blue-700',
-    neutral:'bg-stone-100 text-stone-500',
+    danger:'bg-rose-50 text-rose-600',
+    info:'bg-sky-50 text-sky-600',
+    neutral:'bg-stone-100 text-stone-400',
   }[variant];
   return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${v}`}>{label}</span>;
 }
@@ -685,35 +693,35 @@ function Dashboard({setTab,openTourForm,openExpForm,openReports}){
       {/* Net profit card */}
       <div className="gradient-card rounded-3xl p-5 mb-5 text-white">
         <div className="flex justify-between items-start mb-1">
-          <span className="text-amber-100 text-sm">{periodLabel}</span>
-          <span className="bg-white/20 rounded-lg px-2 py-0.5 text-xs font-bold">
+          <span className="text-stone-300 text-xs font-medium tracking-wide uppercase">{periodLabel}</span>
+          <span className="bg-white/15 rounded-lg px-2.5 py-1 text-xs font-semibold text-white/80">
             {s.margin>0?'+':''}{s.margin}%
           </span>
         </div>
-        <p className="text-amber-100 text-xs mb-1">Net Kazanç</p>
-        <p className="text-4xl font-black tracking-tight mb-5">{fmt(s.net)}</p>
-        <div className="flex gap-6 pt-4 border-t border-white/20">
-          <div><p className="text-amber-100 text-xs mb-1">Toplam Gelir</p><p className="font-bold text-lg">{fmt(s.inc)}</p></div>
-          <div className="w-px bg-white/20"/>
-          <div><p className="text-amber-100 text-xs mb-1">Toplam Gider</p><p className="font-bold text-lg">{fmt(s.exp)}</p></div>
+        <p className="text-stone-400 text-xs mb-2 mt-3">Net Kazanç</p>
+        <p className="text-4xl font-bold tracking-tight mb-5">{fmt(s.net)}</p>
+        <div className="flex gap-6 pt-4 border-t border-white/10">
+          <div><p className="text-stone-400 text-xs mb-1">Toplam Gelir</p><p className="font-semibold text-base">{fmt(s.inc)}</p></div>
+          <div className="w-px bg-white/10"/>
+          <div><p className="text-stone-400 text-xs mb-1">Toplam Gider</p><p className="font-semibold text-base">{fmt(s.exp)}</p></div>
         </div>
       </div>
 
       {/* Income cards */}
-      <p className="text-xs text-stone-500 font-bold uppercase tracking-wide mb-3">Gelir Detayı</p>
+      <p className="text-xs text-stone-400 font-semibold uppercase tracking-widest mb-3">Gelir Detayı</p>
       <div className="grid grid-cols-2 gap-3 mb-3">
         <StatCard title="Yevmiyeler" value={fmt(s.dr)} icon="briefcase" color="text-amber-700" bg="bg-amber-50"/>
-        <StatCard title="Komisyonlar" value={fmt(s.cm)} icon="store" color="text-violet-600" bg="bg-violet-50"/>
+        <StatCard title="Komisyonlar" value={fmt(s.cm)} icon="store" color="text-indigo-500" bg="bg-indigo-50"/>
       </div>
       <div className="grid grid-cols-2 gap-3 mb-5">
-        <StatCard title="Bahşişler" value={fmt(s.ti)} icon="gift" color="text-emerald-600" bg="bg-emerald-50"/>
-        <StatCard title="Alacaklar" value={fmt(s.unpaid)} sub="Ödenmemiş" icon="clock" color="text-rose-500" bg="bg-rose-50"/>
+        <StatCard title="Bahşişler" value={fmt(s.ti)} icon="gift" color="text-teal-600" bg="bg-teal-50"/>
+        <StatCard title="Alacaklar" value={fmt(s.unpaid)} sub="Ödenmemiş" icon="clock" color="text-rose-400" bg="bg-rose-50"/>
       </div>
 
       {/* Stats row */}
       <div className="grid grid-cols-2 gap-3 mb-5">
-        <StatCard title="Toplam Gider" value={fmt(s.exp)} icon="trending-down" color="text-red-500" bg="bg-red-50"/>
-        <StatCard title="Tur Sayısı" value={`${tours.length} Tur`} icon="map" color="text-blue-600" bg="bg-blue-50"/>
+        <StatCard title="Toplam Gider" value={fmt(s.exp)} icon="trending-down" color="text-rose-500" bg="bg-rose-50"/>
+        <StatCard title="Tur Sayısı" value={`${tours.length} Tur`} icon="map" color="text-slate-500" bg="bg-slate-50"/>
       </div>
 
       {/* Quick actions */}
@@ -745,7 +753,7 @@ function Dashboard({setTab,openTourForm,openExpForm,openReports}){
 ═══════════════════════════════════════════════════════════ */
 function TourCardRow({tour,agency,onPress,onAddIncome}){
   const st=tourStatus(tour);
-  const accent={CURRENT:'bg-green-400',UPCOMING:'bg-blue-400',PAST:'bg-stone-300'}[st];
+  const accent={CURRENT:'bg-teal-400',UPCOMING:'bg-indigo-300',PAST:'bg-stone-300'}[st];
   const stBadge={CURRENT:{v:'success',l:'Aktif'},UPCOMING:{v:'info',l:'Yaklaşan'},PAST:{v:'neutral',l:'Geçmiş'}}[st];
   const payBadge={PAID:{v:'success',l:'Ödendi'},PARTIAL:{v:'warning',l:'Kısmi'},UNPAID:{v:'danger',l:'Bekliyor'}}[tour.paymentStatus];
 
@@ -1283,15 +1291,15 @@ function App(){
     <ConfirmProvider>
       <div className="flex flex-col" style={{height:'100dvh',maxWidth:430,margin:'0 auto'}}>
         {/* Header */}
-        <div className="bg-white border-b border-stone-100 px-5 pt-safe flex items-center justify-between" style={{paddingTop:'env(safe-area-inset-top,12px)',paddingBottom:12}}>
+        <div className="bg-white border-b border-stone-100 px-5 flex items-center justify-between" style={{paddingTop:'env(safe-area-inset-top,14px)',paddingBottom:14}}>
           <div>
-            <p className="text-xs text-stone-400">GuideTrack</p>
-            <h1 className="text-xl font-black text-stone-800">
+            <p className="text-xs font-medium tracking-widest text-stone-400 uppercase">GuideTrack</p>
+            <h1 className="text-xl font-bold text-stone-800 tracking-tight">
               {tabs.find(t=>t.id===tab)?.label||''}
             </h1>
           </div>
           <div className="flex gap-2">
-            <button onClick={()=>setTourFormOpen(true)} className="w-9 h-9 bg-amber-500 rounded-xl flex items-center justify-center text-white shadow-amber-200 shadow-md hover:bg-amber-600 active:scale-95 transition-all">
+            <button onClick={()=>setTourFormOpen(true)} className="w-9 h-9 bg-amber-600 rounded-xl flex items-center justify-center text-white shadow-amber-200 shadow-md hover:bg-amber-700 active:scale-95 transition-all">
               <i className="fas fa-plus text-sm"/>
             </button>
           </div>
@@ -1310,10 +1318,10 @@ function App(){
         <div className="bg-white border-t border-stone-100 flex" style={{paddingBottom:'env(safe-area-inset-bottom,8px)'}}>
           {tabs.map(t=>(
             <button key={t.id} onClick={()=>setTab(t.id)}
-              className={`flex-1 flex flex-col items-center pt-3 pb-2 gap-1 transition-all ${tab===t.id?'text-amber-500':'text-stone-400 hover:text-stone-600'}`}>
+              className={`flex-1 flex flex-col items-center pt-3 pb-2 gap-1 transition-all ${tab===t.id?'text-amber-600':'text-stone-400 hover:text-stone-500'}`}>
               <i className={`fas fa-${t.icon} text-lg`}/>
-              <span className="text-xs font-medium">{t.label}</span>
-              {tab===t.id&&<div className="w-5 h-0.5 bg-amber-500 rounded-full"/>}
+              <span className="text-xs font-semibold">{t.label}</span>
+              {tab===t.id&&<div className="w-6 h-0.5 bg-amber-600 rounded-full"/>}
             </button>
           ))}
         </div>
