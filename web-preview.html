@@ -385,6 +385,7 @@ function TourDetailModal({open,onClose,tour,onEdit,onAddIncome}){
   const showConfirm=useConfirm();
   const toast=useToast();
   if(!tour) return null;
+  const liveTour=state.tours.find(x=>x.id===tour.id)||tour;
   const agency=state.agencies.find(a=>a.id===tour.agencyId);
   const st=tourStatus(tour);
   const total=tourTotal(tour);
@@ -429,12 +430,12 @@ function TourDetailModal({open,onClose,tour,onEdit,onAddIncome}){
     <div className="bg-white border border-stone-100 rounded-2xl p-4 mb-4">
       <div className="flex justify-between items-center mb-3">
         <span className="font-semibold text-stone-700 text-sm">Ödeme Durumu</span>
-        <Badge label={payBadge[tour.paymentStatus]?.l} variant={payBadge[tour.paymentStatus]?.v}/>
+        <Badge label={payBadge[liveTour.paymentStatus]?.l} variant={payBadge[liveTour.paymentStatus]?.v}/>
       </div>
       <div className="flex gap-2">
         {['UNPAID','PARTIAL','PAID'].map(s=>(
           <button key={s} onClick={()=>setPayment(s)}
-            className={`flex-1 py-2 rounded-xl text-xs font-semibold border-2 transition-all ${tour.paymentStatus===s?'bg-amber-500 border-amber-500 text-white':'bg-white border-stone-200 text-stone-600 hover:border-amber-300'}`}>
+            className={`flex-1 py-2 rounded-xl text-xs font-semibold border-2 transition-all ${liveTour.paymentStatus===s?'bg-amber-500 border-amber-500 text-white':'bg-white border-stone-200 text-stone-600 hover:border-amber-300'}`}>
             {s==='PAID'?'Ödendi':s==='PARTIAL'?'Kısmi':'Bekliyor'}
           </button>
         ))}
