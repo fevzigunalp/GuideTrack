@@ -29,9 +29,19 @@ tailwind.config = {
   .gradient-card{background:linear-gradient(135deg,#b45309 0%,#f59e0b 100%)}
   input,textarea,select{outline:none}
   .modal-bg{background:rgba(0,0,0,.5);backdrop-filter:blur(4px)}
+  #loading-screen{position:fixed;inset:0;background:#fafaf9;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;transition:opacity .4s ease}
+  #loading-screen.hidden{opacity:0;pointer-events:none}
+  .spinner{width:44px;height:44px;border:3px solid #fde68a;border-top-color:#f59e0b;border-radius:50%;animation:spin .8s linear infinite;margin-bottom:16px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .toast-slide{animation:toastIn .35s cubic-bezier(.34,1.56,.64,1) forwards}
+  @keyframes toastIn{from{opacity:0;transform:translateY(-20px) scale(.88)}to{opacity:1;transform:none}}
 </style>
 </head>
 <body>
+<div id="loading-screen">
+  <div class="spinner"></div>
+  <p style="color:#a8a29e;font-size:13px;font-family:-apple-system,BlinkMacSystemFont,sans-serif;letter-spacing:.3px">Yükleniyor...</p>
+</div>
 <div id="root"></div>
 <script type="text/babel">
 const {useState,useEffect,useReducer,useContext,createContext,useMemo,useCallback,useRef} = React;
@@ -140,6 +150,57 @@ function AppProvider({children}){
 const useApp=()=>useContext(AppCtx);
 
 /* ═══════════════════════════════════════════════════════════
+   TOAST SYSTEM
+═══════════════════════════════════════════════════════════ */
+const ToastCtx=createContext(null);
+function ToastProvider({children}){
+  const [toasts,setToasts]=useState([]);
+  const show=useCallback((msg,type='success')=>{
+    const id=uid('t');
+    setToasts(p=>[...p,{id,msg,type}]);
+    setTimeout(()=>setToasts(p=>p.filter(t=>t.id!==id)),3000);
+  },[]);
+  return <ToastCtx.Provider value={show}>
+    {children}
+    <div style={{position:'fixed',top:16,left:'50%',transform:'translateX(-50%)',zIndex:9997,width:'90%',maxWidth:380,pointerEvents:'none',display:'flex',flexDirection:'column',gap:8}}>
+      {toasts.map(t=>(
+        <div key={t.id} className={`toast-slide flex items-center gap-3 px-4 py-3 rounded-2xl shadow-xl text-sm font-semibold text-white ${t.type==='error'?'bg-red-500':t.type==='warning'?'bg-amber-500':'bg-stone-800'}`}>
+          <i className={`fas fa-${t.type==='error'?'exclamation-circle':t.type==='warning'?'exclamation-triangle':'check-circle'} flex-shrink-0`}/>
+          <span className="flex-1">{t.msg}</span>
+        </div>
+      ))}
+    </div>
+  </ToastCtx.Provider>;
+}
+const useToast=()=>useContext(ToastCtx);
+
+/* ═══════════════════════════════════════════════════════════
+   CONFIRM DIALOG
+═══════════════════════════════════════════════════════════ */
+const ConfirmCtx=createContext(null);
+function ConfirmProvider({children}){
+  const [dialog,setDialog]=useState(null);
+  const showConfirm=useCallback((msg)=>new Promise(resolve=>setDialog({msg,resolve})),[]);
+  const handle=(ok)=>{dialog?.resolve(ok);setDialog(null);};
+  return <ConfirmCtx.Provider value={showConfirm}>
+    {children}
+    {dialog&&<div className="modal-bg fixed inset-0 flex items-center justify-center p-6" style={{zIndex:9998}}>
+      <div className="bg-white rounded-3xl p-6 w-full max-w-xs fade-in shadow-2xl">
+        <div className="w-12 h-12 bg-red-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+          <i className="fas fa-exclamation-triangle text-red-500 text-xl"/>
+        </div>
+        <p className="text-stone-800 font-semibold text-center mb-5 text-sm leading-relaxed">{dialog.msg}</p>
+        <div className="flex gap-3">
+          <Btn label="İptal" onClick={()=>handle(false)} variant="outline" full/>
+          <Btn label="Evet, Sil" onClick={()=>handle(true)} variant="danger" full/>
+        </div>
+      </div>
+    </div>}
+  </ConfirmCtx.Provider>;
+}
+const useConfirm=()=>useContext(ConfirmCtx);
+
+/* ═══════════════════════════════════════════════════════════
    UI ATOMS
 ═══════════════════════════════════════════════════════════ */
 function Btn({label,icon,onClick,variant='primary',size='md',full=false,disabled=false,className=''}){
@@ -231,6 +292,7 @@ function ChipSelector({options,value,onChange}){
 ═══════════════════════════════════════════════════════════ */
 function TourFormModal({open,onClose,editTour=null}){
   const {state,dispatch}=useApp();
+  const toast=useToast();
   const now=todayStr();
   const [title,setTitle]=useState('');
   const [type,setType]=useState('FULL');
@@ -283,6 +345,7 @@ function TourFormModal({open,onClose,editTour=null}){
       updatedAt:new Date().toISOString(),
     };
     dispatch({type:editTour?'UPD_TOUR':'ADD_TOUR',p:tour});
+    toast(editTour?'Tur güncellendi':'Tur eklendi');
     onClose();
   };
 
@@ -319,6 +382,8 @@ function TourFormModal({open,onClose,editTour=null}){
 ═══════════════════════════════════════════════════════════ */
 function TourDetailModal({open,onClose,tour,onEdit,onAddIncome}){
   const {state,dispatch}=useApp();
+  const showConfirm=useConfirm();
+  const toast=useToast();
   if(!tour) return null;
   const agency=state.agencies.find(a=>a.id===tour.agencyId);
   const st=tourStatus(tour);
@@ -338,8 +403,9 @@ function TourDetailModal({open,onClose,tour,onEdit,onAddIncome}){
     dispatch({type:'UPD_PAY',p:{id:tour.id,status,amt}});
   };
 
-  const deleteTour=()=>{
-    if(confirm(`"${tour.title}" silinsin mi?`)){dispatch({type:'DEL_TOUR',p:tour.id});onClose();}
+  const deleteTour=async()=>{
+    const ok=await showConfirm(`"${tour.title}" silinsin mi?`);
+    if(ok){dispatch({type:'DEL_TOUR',p:tour.id});toast('Tur silindi');onClose();}
   };
 
   return <Modal open={open} onClose={onClose} title="Tur Detayı" size="lg">
@@ -420,6 +486,7 @@ function TourDetailModal({open,onClose,tour,onEdit,onAddIncome}){
 ═══════════════════════════════════════════════════════════ */
 function ExtraIncomeModal({open,onClose,tourId}){
   const {state,dispatch}=useApp();
+  const toast=useToast();
   const [itype,setItype]=useState('TIP');
   const [amount,setAmount]=useState('');
   const [note,setNote]=useState('');
@@ -431,8 +498,8 @@ function ExtraIncomeModal({open,onClose,tourId}){
   const save=()=>{
     const amt=parseFloat(amount.replace(',','.'))||0;
     if(!amt||amt<=0) return;
-    if(itype==='TIP') dispatch({type:'ADD_TIP',p:{tid:tourId,tip:{id:uid('tip'),amount:amt,note:note.trim()||undefined}}});
-    else dispatch({type:'ADD_COMM',p:{tid:tourId,comm:{id:uid('comm'),category:cat,amount:amt}}});
+    if(itype==='TIP'){dispatch({type:'ADD_TIP',p:{tid:tourId,tip:{id:uid('tip'),amount:amt,note:note.trim()||undefined}}});toast('Bahşiş eklendi');}
+    else{dispatch({type:'ADD_COMM',p:{tid:tourId,comm:{id:uid('comm'),category:cat,amount:amt}}});toast('Komisyon eklendi');}
     onClose();
   };
 
@@ -463,6 +530,7 @@ function ExtraIncomeModal({open,onClose,tourId}){
 ═══════════════════════════════════════════════════════════ */
 function ExpenseFormModal({open,onClose}){
   const {state,dispatch}=useApp();
+  const toast=useToast();
   const [title,setTitle]=useState('');
   const [amount,setAmount]=useState('');
   const [cat,setCat]=useState(state.expCats[0]);
@@ -497,6 +565,7 @@ function ExpenseFormModal({open,onClose}){
       const ds=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
       dispatch({type:'ADD_EXP',p:{id:uid('exp'),title:title.trim(),amount:amt,category:cat,date:ds,isRecurring:recurring,recurrenceMonths:recurring?n:undefined,createdAt:now}});
     }
+    toast(recurring&&n>1?`${n} aylık gider eklendi`:'Gider eklendi');
     onClose();
   };
 
@@ -534,6 +603,7 @@ function ExpenseFormModal({open,onClose}){
 ═══════════════════════════════════════════════════════════ */
 function AgencyFormModal({open,onClose,editAgency=null}){
   const {dispatch}=useApp();
+  const toast=useToast();
   const [name,setName]=useState('');
   const [rate,setRate]=useState('1500');
   const [contact,setContact]=useState('');
@@ -551,6 +621,7 @@ function AgencyFormModal({open,onClose,editAgency=null}){
     if(Object.keys(e).length){setErrs(e);return;}
     const agency={id:editAgency?.id||uid('agency'),name:name.trim(),dailyRate:parseFloat(rate)||0,contactPerson:contact.trim()||undefined,phone:phone.trim()||undefined,notes:notes.trim()||undefined,createdAt:editAgency?.createdAt||new Date().toISOString()};
     dispatch({type:editAgency?'UPD_AGENCY':'ADD_AGENCY',p:agency});
+    toast(editAgency?'Ajans güncellendi':'Ajans eklendi');
     onClose();
   };
 
@@ -709,6 +780,7 @@ function TourCardRow({tour,agency,onPress,onAddIncome}){
 function Tours(){
   const {state,dispatch}=useApp();
   const [filter,setFilter]=useState('ALL');
+  const [search,setSearch]=useState('');
   const [detailTour,setDetailTour]=useState(null);
   const [editTour,setEditTour]=useState(null);
   const [extraTourId,setExtraTourId]=useState(null);
@@ -718,9 +790,11 @@ function Tours(){
 
   const filtered=useMemo(()=>{
     const sorted=[...state.tours].sort((a,b)=>b.startDate.localeCompare(a.startDate));
-    if(filter==='ALL') return sorted;
-    return sorted.filter(t=>tourStatus(t)===filter);
-  },[state.tours,filter]);
+    const byFilter=filter==='ALL'?sorted:sorted.filter(t=>tourStatus(t)===filter);
+    if(!search.trim()) return byFilter;
+    const q=search.toLowerCase();
+    return byFilter.filter(t=>{const ag=agMap.get(t.agencyId);return t.title.toLowerCase().includes(q)||(ag?.name||'').toLowerCase().includes(q);});
+  },[state.tours,filter,search,agMap]);
 
   const counts=useMemo(()=>({
     ALL:state.tours.length,
@@ -730,6 +804,14 @@ function Tours(){
   }),[state.tours]);
 
   return <div className="flex-1 overflow-y-auto pb-24">
+    {/* Search */}
+    <div className="px-4 pt-3 pb-1">
+      <div className="relative">
+        <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-stone-300 text-sm pointer-events-none"/>
+        <input className="w-full pl-9 pr-8 py-2.5 text-sm border-2 border-stone-200 rounded-xl bg-white focus:border-amber-400 outline-none" placeholder="Tur veya ajans ara..." value={search} onChange={e=>setSearch(e.target.value)}/>
+        {search&&<button onClick={()=>setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-300 hover:text-stone-500"><i className="fas fa-times text-sm"/></button>}
+      </div>
+    </div>
     {/* Filter tabs */}
     <div className="px-4 pb-2 pt-1">
       <div className="flex gap-2 overflow-x-auto pb-1">
@@ -872,19 +954,33 @@ function Calendar(){
 ═══════════════════════════════════════════════════════════ */
 function Expenses(){
   const {state,dispatch}=useApp();
+  const showConfirm=useConfirm();
+  const toast=useToast();
   const [selCat,setSelCat]=useState('Tümü');
+  const [search,setSearch]=useState('');
   const [formOpen,setFormOpen]=useState(false);
 
   const cats=useMemo(()=>['Tümü',...new Set(state.expenses.map(e=>e.category))]   ,[state.expenses]);
   const filtered=useMemo(()=>{
     const s=[...state.expenses].sort((a,b)=>b.date.localeCompare(a.date));
-    return selCat==='Tümü'?s:s.filter(e=>e.category===selCat);
-  },[state.expenses,selCat]);
+    const byCat=selCat==='Tümü'?s:s.filter(e=>e.category===selCat);
+    if(!search.trim()) return byCat;
+    const q=search.toLowerCase();
+    return byCat.filter(e=>e.title.toLowerCase().includes(q)||e.category.toLowerCase().includes(q));
+  },[state.expenses,selCat,search]);
   const total=filtered.reduce((s,e)=>s+e.amount,0);
 
   const catIcon={Kira:'home',Bağkur:'shield-alt',Ulaşım:'car',Yemek:'utensils',Fatura:'file-invoice',Telefon:'mobile-alt',Sağlık:'heartbeat',Diğer:'ellipsis-h'};
 
   return <div className="flex-1 overflow-y-auto pb-24">
+    {/* Search */}
+    <div className="px-4 pt-3 pb-1">
+      <div className="relative">
+        <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-stone-300 text-sm pointer-events-none"/>
+        <input className="w-full pl-9 pr-8 py-2.5 text-sm border-2 border-stone-200 rounded-xl bg-white focus:border-amber-400 outline-none" placeholder="Gider ara..." value={search} onChange={e=>setSearch(e.target.value)}/>
+        {search&&<button onClick={()=>setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-300 hover:text-stone-500"><i className="fas fa-times text-sm"/></button>}
+      </div>
+    </div>
     {/* Category filter */}
     <div className="px-4 pt-1 pb-2">
       <div className="flex gap-2 overflow-x-auto pb-1">
@@ -921,7 +1017,7 @@ function Expenses(){
             </div>
             <div className="flex items-center gap-2">
               <span className="font-bold text-red-500 text-sm">{fmt(e.amount)}</span>
-              <button onClick={()=>{ if(confirm(`"${e.title}" silinsin mi?`)) dispatch({type:'DEL_EXP',p:e.id}); }}
+              <button onClick={async()=>{ if(await showConfirm(`"${e.title}" silinsin mi?`)){dispatch({type:'DEL_EXP',p:e.id});toast('Gider silindi');} }}
                 className="w-7 h-7 rounded-lg flex items-center justify-center text-stone-300 hover:text-red-400 hover:bg-red-50">
                 <i className="fas fa-trash text-xs"/>
               </button>
@@ -1045,6 +1141,8 @@ function ReportsModal({open,onClose}){
 ═══════════════════════════════════════════════════════════ */
 function Settings({openReports}){
   const {state,dispatch}=useApp();
+  const showConfirm=useConfirm();
+  const toast=useToast();
   const [agFormOpen,setAgFormOpen]=useState(false);
   const [editAgency,setEditAgency]=useState(null);
 
@@ -1065,10 +1163,9 @@ function Settings({openReports}){
     URL.revokeObjectURL(url);
   };
 
-  const clearData=()=>{
-    if(confirm('Tüm veriler silinsin mi? Bu işlem geri alınamaz!')){
-      localStorage.clear(); location.reload();
-    }
+  const clearData=async()=>{
+    const ok=await showConfirm('Tüm veriler silinsin mi? Bu işlem geri alınamaz!');
+    if(ok){localStorage.clear();location.reload();}
   };
 
   return <div className="flex-1 overflow-y-auto pb-24">
@@ -1116,9 +1213,10 @@ function Settings({openReports}){
               <button onClick={()=>{setEditAgency(a);setAgFormOpen(true);}} className="w-7 h-7 rounded-lg flex items-center justify-center text-stone-300 hover:text-amber-500 hover:bg-amber-50">
                 <i className="fas fa-edit text-xs"/>
               </button>
-              <button onClick={()=>{
-                if(state.tours.some(t=>t.agencyId===a.id)){alert(`"${a.name}" ajansı turlarda kullanılıyor.`);return;}
-                if(confirm(`"${a.name}" silinsin mi?`)) dispatch({type:'DEL_AGENCY',p:a.id});
+              <button onClick={async()=>{
+                if(state.tours.some(t=>t.agencyId===a.id)){toast(`"${a.name}" ajansı turlarda kullanılıyor`,'warning');return;}
+                const ok=await showConfirm(`"${a.name}" silinsin mi?`);
+                if(ok){dispatch({type:'DEL_AGENCY',p:a.id});toast('Ajans silindi');}
               }} className="w-7 h-7 rounded-lg flex items-center justify-center text-stone-300 hover:text-red-400 hover:bg-red-50">
                 <i className="fas fa-trash text-xs"/>
               </button>
@@ -1168,6 +1266,7 @@ function App(){
   const [tourFormOpen,setTourFormOpen]=useState(false);
   const [expFormOpen,setExpFormOpen]=useState(false);
   const [reportsOpen,setReportsOpen]=useState(false);
+  useEffect(()=>{const ls=document.getElementById('loading-screen');if(ls)setTimeout(()=>ls.classList.add('hidden'),150);},[]);
 
   const tabs=[
     {id:'dashboard',icon:'chart-bar',label:'Bilanço'},
@@ -1179,6 +1278,8 @@ function App(){
 
   return (
     <AppProvider>
+    <ToastProvider>
+    <ConfirmProvider>
       <div className="flex flex-col" style={{height:'100dvh',maxWidth:430,margin:'0 auto'}}>
         {/* Header */}
         <div className="bg-white border-b border-stone-100 px-5 pt-safe flex items-center justify-between" style={{paddingTop:'env(safe-area-inset-top,12px)',paddingBottom:12}}>
@@ -1220,6 +1321,8 @@ function App(){
       <TourFormModal open={tourFormOpen} onClose={()=>setTourFormOpen(false)}/>
       <ExpenseFormModal open={expFormOpen} onClose={()=>setExpFormOpen(false)}/>
       <ReportsModal open={reportsOpen} onClose={()=>setReportsOpen(false)}/>
+    </ConfirmProvider>
+    </ToastProvider>
     </AppProvider>
   );
 }
