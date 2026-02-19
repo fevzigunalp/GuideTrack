@@ -1,0 +1,1230 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<title>GuideTrack – Tur Rehberi Finans</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  theme: { extend: { colors: {
+    amber:  { 50:'#fffbeb',100:'#fef3c7',200:'#fde68a',300:'#fcd34d',400:'#fbbf24',500:'#f59e0b',600:'#d97706',700:'#b45309',800:'#92400e',900:'#78350f' },
+    stone:  { 50:'#fafaf9',100:'#f5f5f4',200:'#e7e5e4',300:'#d6d3d1',400:'#a8a29e',500:'#78716c',600:'#57534e',700:'#44403c',800:'#292524',900:'#1c1917' }
+  }}}
+}
+</script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+<script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{background:#fafaf9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;margin:0}
+  #root{max-width:430px;margin:0 auto;min-height:100vh;position:relative;background:#fafaf9;box-shadow:0 0 40px rgba(0,0,0,.12)}
+  ::-webkit-scrollbar{display:none}
+  .no-scroll{overflow:hidden}
+  .fade-in{animation:fadeIn .2s ease}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  .gradient-card{background:linear-gradient(135deg,#b45309 0%,#f59e0b 100%)}
+  input,textarea,select{outline:none}
+  .modal-bg{background:rgba(0,0,0,.5);backdrop-filter:blur(4px)}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useReducer,useContext,createContext,useMemo,useCallback,useRef} = React;
+
+/* ═══════════════════════════════════════════════════════════
+   CONSTANTS
+═══════════════════════════════════════════════════════════ */
+const TR_MONTHS = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+const TR_DAYS   = ['Pzt','Sal','Çar','Per','Cum','Cmt','Paz'];
+
+const DEFAULT_AGENCIES = [
+  {id:'a1',name:'Özel Tur',dailyRate:1500,createdAt:new Date().toISOString()},
+  {id:'a2',name:'TUI',dailyRate:2000,createdAt:new Date().toISOString()},
+  {id:'a3',name:'Neckermann',dailyRate:1800,createdAt:new Date().toISOString()},
+  {id:'a4',name:'Thomas Cook',dailyRate:1800,createdAt:new Date().toISOString()},
+];
+const EXPENSE_CATS = ['Kira','Bağkur','Ulaşım','Yemek','Fatura','Telefon','Sağlık','Diğer'];
+const COMM_CATS   = ['Halı','Taş','Seramik','At Turu','ATV Turu','Yemek','Balon','Deri','Kuru Yemiş','Diğer'];
+
+/* ═══════════════════════════════════════════════════════════
+   STORAGE
+═══════════════════════════════════════════════════════════ */
+const S = {
+  get:(k,d)=>{ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):d; }catch{return d;} },
+  set:(k,v)=>localStorage.setItem(k,JSON.stringify(v)),
+};
+
+/* ═══════════════════════════════════════════════════════════
+   CALCULATIONS
+═══════════════════════════════════════════════════════════ */
+function duration(t){
+  if(t.type==='HALF') return 0.5;
+  const d=Math.floor((new Date(t.endDate)-new Date(t.startDate))/86400000)+1;
+  return Math.max(1,d);
+}
+const baseIncome=(t)=> t.dailyRate * duration(t);
+const tipsTotal =(t)=> t.tips.reduce((s,x)=>s+x.amount,0);
+const commTotal =(t)=> t.commissions.reduce((s,x)=>s+x.amount,0);
+const tourTotal =(t)=> baseIncome(t)+tipsTotal(t)+commTotal(t);
+const fmt=(n)=> new Intl.NumberFormat('tr-TR',{style:'currency',currency:'TRY',minimumFractionDigits:0,maximumFractionDigits:0}).format(n);
+const fmtDate=(s)=>{ if(!s) return ''; const [y,m,d]=s.split('-'); return `${d}.${m}.${y}`; };
+const todayStr=()=>{ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
+function tourStatus(t){
+  const today=new Date(); today.setHours(0,0,0,0);
+  const s=new Date(t.startDate); s.setHours(0,0,0,0);
+  const e=new Date(t.endDate);   e.setHours(0,0,0,0);
+  if(today<s) return 'UPCOMING';
+  if(today>e) return 'PAST';
+  return 'CURRENT';
+}
+function summary(tours,expenses){
+  const dr=tours.reduce((s,t)=>s+baseIncome(t),0);
+  const ti=tours.reduce((s,t)=>s+tipsTotal(t),0);
+  const cm=tours.reduce((s,t)=>s+commTotal(t),0);
+  const inc=dr+ti+cm;
+  const exp=expenses.reduce((s,e)=>s+e.amount,0);
+  const net=inc-exp;
+  const margin=inc>0?Math.round(net/inc*100):0;
+  const unpaid=tours.filter(t=>t.paymentStatus!=='PAID').reduce((s,t)=>s+baseIncome(t)-(t.paidAmount||0),0);
+  return {dr,ti,cm,inc,exp,net,margin,unpaid};
+}
+function uid(prefix='id'){ return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2,7)}`; }
+
+/* ═══════════════════════════════════════════════════════════
+   STATE
+═══════════════════════════════════════════════════════════ */
+const AppCtx = createContext(null);
+
+function reducer(state,action){
+  switch(action.type){
+    case 'INIT': return {...state,...action.p,loading:false};
+    case 'ADD_TOUR':    return {...state,tours:[action.p,...state.tours]};
+    case 'UPD_TOUR':    return {...state,tours:state.tours.map(t=>t.id===action.p.id?action.p:t)};
+    case 'DEL_TOUR':    return {...state,tours:state.tours.filter(t=>t.id!==action.p)};
+    case 'ADD_TIP':     return {...state,tours:state.tours.map(t=>t.id===action.p.tid?{...t,tips:[...t.tips,action.p.tip],updatedAt:new Date().toISOString()}:t)};
+    case 'ADD_COMM':    return {...state,tours:state.tours.map(t=>t.id===action.p.tid?{...t,commissions:[...t.commissions,action.p.comm],updatedAt:new Date().toISOString()}:t)};
+    case 'UPD_PAY':     return {...state,tours:state.tours.map(t=>t.id===action.p.id?{...t,paymentStatus:action.p.status,paidAmount:action.p.amt,updatedAt:new Date().toISOString()}:t)};
+    case 'ADD_EXP':     return {...state,expenses:[action.p,...state.expenses]};
+    case 'DEL_EXP':     return {...state,expenses:state.expenses.filter(e=>e.id!==action.p)};
+    case 'ADD_AGENCY':  return {...state,agencies:[...state.agencies,action.p]};
+    case 'UPD_AGENCY':  return {...state,agencies:state.agencies.map(a=>a.id===action.p.id?action.p:a)};
+    case 'DEL_AGENCY':  return {...state,agencies:state.agencies.filter(a=>a.id!==action.p)};
+    case 'ADD_ECAT':    return state.expCats.includes(action.p)?state:{...state,expCats:[...state.expCats,action.p]};
+    default: return state;
+  }
+}
+
+function AppProvider({children}){
+  const [state,dispatch]=useReducer(reducer,{tours:[],expenses:[],agencies:[],expCats:[...EXPENSE_CATS],loading:true});
+
+  useEffect(()=>{
+    dispatch({type:'INIT',p:{
+      tours:    S.get('gt_tours',[]),
+      expenses: S.get('gt_expenses',[]),
+      agencies: S.get('gt_agencies',DEFAULT_AGENCIES),
+      expCats:  [...EXPENSE_CATS,...S.get('gt_ecats',[]).filter(c=>!EXPENSE_CATS.includes(c))],
+    }});
+  },[]);
+
+  useEffect(()=>{ if(!state.loading){ S.set('gt_tours',state.tours); }},[state.tours,state.loading]);
+  useEffect(()=>{ if(!state.loading){ S.set('gt_expenses',state.expenses); }},[state.expenses,state.loading]);
+  useEffect(()=>{ if(!state.loading){ S.set('gt_agencies',state.agencies); }},[state.agencies,state.loading]);
+
+  return <AppCtx.Provider value={{state,dispatch}}>{children}</AppCtx.Provider>;
+}
+const useApp=()=>useContext(AppCtx);
+
+/* ═══════════════════════════════════════════════════════════
+   UI ATOMS
+═══════════════════════════════════════════════════════════ */
+function Btn({label,icon,onClick,variant='primary',size='md',full=false,disabled=false,className=''}){
+  const base='inline-flex items-center justify-center gap-2 font-semibold rounded-xl transition-all active:scale-95 disabled:opacity-50';
+  const sz={sm:'px-3 py-2 text-sm',md:'px-5 py-3 text-sm',lg:'px-6 py-4 text-base'}[size];
+  const v={
+    primary:'bg-amber-500 text-white shadow-amber-200 shadow-md hover:bg-amber-600',
+    secondary:'bg-amber-100 text-amber-800 hover:bg-amber-200',
+    outline:'border-2 border-amber-500 text-amber-700 hover:bg-amber-50',
+    ghost:'text-amber-600 hover:bg-amber-50',
+    danger:'bg-red-500 text-white hover:bg-red-600',
+  }[variant];
+  return <button className={`${base} ${sz} ${v} ${full?'w-full':''} ${className}`} onClick={onClick} disabled={disabled}>
+    {icon&&<i className={`fas fa-${icon} text-sm`}/>}{label}
+  </button>;
+}
+
+function Inp({label,value,onChange,placeholder='',type='text',required=false,multiline=false,hint='',error=''}){
+  const cls=`w-full px-3 py-2.5 text-sm border-2 rounded-xl bg-white text-stone-800 placeholder-stone-300 transition-colors focus:border-amber-400 focus:ring-0 ${error?'border-red-400':'border-stone-200'}`;
+  return <div className="mb-4">
+    {label&&<label className="block text-sm font-medium text-stone-700 mb-1.5">{label}{required&&<span className="text-red-500 ml-0.5">*</span>}</label>}
+    {multiline
+      ? <textarea className={cls} rows={3} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder}/>
+      : <input className={cls} type={type} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder}/>
+    }
+    {error&&<p className="text-red-500 text-xs mt-1">{error}</p>}
+    {hint&&!error&&<p className="text-stone-400 text-xs mt-1">{hint}</p>}
+  </div>;
+}
+
+function Modal({open,onClose,title,children,size='md'}){
+  if(!open) return null;
+  return <div className="modal-bg fixed inset-0 z-50 flex items-end justify-center" onClick={e=>e.target===e.currentTarget&&onClose()}>
+    <div className={`bg-white w-full ${size==='lg'?'max-w-lg':'max-w-sm'} max-h-[92vh] rounded-t-3xl flex flex-col overflow-hidden fade-in`} style={{maxWidth:430}}>
+      <div className="flex items-center justify-between px-5 py-4 border-b border-stone-100 flex-shrink-0">
+        <div className="w-10 h-1 bg-stone-200 rounded absolute left-1/2 -translate-x-1/2 top-2.5"/>
+        <h3 className="font-bold text-stone-800 text-base">{title}</h3>
+        <button onClick={onClose} className="w-8 h-8 rounded-full bg-stone-100 flex items-center justify-center text-stone-500 hover:bg-stone-200">
+          <i className="fas fa-times text-xs"/>
+        </button>
+      </div>
+      <div className="overflow-y-auto flex-1 p-5">{children}</div>
+    </div>
+  </div>;
+}
+
+function Badge({label,variant='neutral'}){
+  const v={
+    success:'bg-green-100 text-green-700',
+    warning:'bg-amber-100 text-amber-700',
+    danger:'bg-red-100 text-red-600',
+    info:'bg-blue-100 text-blue-700',
+    neutral:'bg-stone-100 text-stone-500',
+  }[variant];
+  return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${v}`}>{label}</span>;
+}
+
+function StatCard({title,value,icon,color='text-amber-600',bg='bg-amber-50',sub=''}){
+  return <div className="bg-white rounded-2xl p-4 flex-1 shadow-sm">
+    <div className="flex items-center gap-2 mb-3">
+      <div className={`w-8 h-8 rounded-xl ${bg} flex items-center justify-center`}>
+        <i className={`fas fa-${icon} text-sm ${color}`}/>
+      </div>
+      <span className="text-xs text-stone-500 font-medium flex-1">{title}</span>
+    </div>
+    <div className={`text-lg font-bold ${color} leading-tight`}>{value}</div>
+    {sub&&<div className="text-xs text-stone-400 mt-0.5">{sub}</div>}
+  </div>;
+}
+
+function ProgressBar({value,max,color='bg-amber-500'}){
+  const pct=max>0?Math.min(100,(value/max)*100):0;
+  return <div className="h-1.5 bg-stone-100 rounded-full overflow-hidden mt-2">
+    <div className={`h-full ${color} rounded-full transition-all`} style={{width:`${pct}%`}}/>
+  </div>;
+}
+
+function ChipSelector({options,value,onChange}){
+  return <div className="flex flex-wrap gap-2 mb-4">
+    {options.map(o=><button key={o.value??o} onClick={()=>onChange(o.value??o)}
+      className={`px-3 py-1.5 rounded-2xl text-sm font-medium border-2 transition-all ${(o.value??o)===value?'bg-amber-500 border-amber-500 text-white':'bg-white border-stone-200 text-stone-600 hover:border-amber-300'}`}>
+      {o.label??o}
+    </button>)}
+  </div>;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   TOUR FORM MODAL
+═══════════════════════════════════════════════════════════ */
+function TourFormModal({open,onClose,editTour=null}){
+  const {state,dispatch}=useApp();
+  const now=todayStr();
+  const [title,setTitle]=useState('');
+  const [type,setType]=useState('FULL');
+  const [start,setStart]=useState(now);
+  const [end,setEnd]=useState(now);
+  const [agencyId,setAgencyId]=useState(state.agencies[0]?.id||'');
+  const [rate,setRate]=useState('');
+  const [notes,setNotes]=useState('');
+  const [errs,setErrs]=useState({});
+
+  useEffect(()=>{
+    if(open){
+      setTitle(editTour?.title||''); setType(editTour?.type||'FULL');
+      setStart(editTour?.startDate||now); setEnd(editTour?.endDate||now);
+      setAgencyId(editTour?.agencyId||state.agencies[0]?.id||'');
+      setRate(editTour?String(editTour.dailyRate):'');
+      setNotes(editTour?.notes||''); setErrs({});
+    }
+  },[open,editTour]);
+
+  useEffect(()=>{
+    if(type!=='PACKAGE') setEnd(start);
+  },[type,start]);
+
+  const ag=state.agencies.find(a=>a.id===agencyId);
+  useEffect(()=>{ if(!editTour&&ag) setRate(String(ag.dailyRate)); },[ag,editTour]);
+
+  const conflict=useMemo(()=>{
+    if(!start||!end) return false;
+    return state.tours.some(t=>{
+      if(t.id===editTour?.id) return false;
+      return start<=t.endDate && end>=t.startDate;
+    });
+  },[start,end,state.tours,editTour]);
+
+  const save=()=>{
+    const e={};
+    if(!title.trim()) e.title='Tur adı zorunludur';
+    if(!rate||parseFloat(rate)<=0) e.rate='Geçerli yevmiye girin';
+    if(Object.keys(e).length){ setErrs(e); return; }
+    const tour={
+      id:editTour?.id||uid('tour'),title:title.trim(),type,
+      startDate:start,endDate:type==='PACKAGE'?end:start,
+      agencyId,dailyRate:parseFloat(rate.replace(',','.'))||0,
+      paymentStatus:editTour?.paymentStatus||'UNPAID',
+      paidAmount:editTour?.paidAmount||0,
+      tips:editTour?.tips||[],commissions:editTour?.commissions||[],
+      notes:notes.trim(),
+      createdAt:editTour?.createdAt||new Date().toISOString(),
+      updatedAt:new Date().toISOString(),
+    };
+    dispatch({type:editTour?'UPD_TOUR':'ADD_TOUR',p:tour});
+    onClose();
+  };
+
+  return <Modal open={open} onClose={onClose} title={editTour?'Turu Düzenle':'Yeni Tur'}>
+    <div className="mb-4">
+      <p className="text-xs text-stone-500 font-medium mb-2">Tur Türü</p>
+      <ChipSelector
+        options={[{label:'Yarım Gün',value:'HALF'},{label:'Tam Gün',value:'FULL'},{label:'Paket Tur',value:'PACKAGE'}]}
+        value={type} onChange={setType}/>
+    </div>
+    <Inp label="Tur Adı" value={title} onChange={setTitle} placeholder="Örn: Efes Turu" required error={errs.title}/>
+    <div className="mb-4">
+      <p className="text-xs text-stone-500 font-medium mb-2">Ajans <span className="text-red-500">*</span></p>
+      <div className="flex flex-wrap gap-2">
+        {state.agencies.map(a=><button key={a.id} onClick={()=>setAgencyId(a.id)}
+          className={`px-3 py-1.5 rounded-2xl text-sm font-medium border-2 transition-all ${a.id===agencyId?'bg-amber-500 border-amber-500 text-white':'bg-white border-stone-200 text-stone-600'}`}>
+          {a.name}
+        </button>)}
+      </div>
+    </div>
+    <Inp label="Yevmiye (₺)" value={rate} onChange={setRate} type="number" placeholder="1500" required error={errs.rate}/>
+    <Inp label="Başlangıç Tarihi" value={start} onChange={setStart} type="date" required/>
+    {type==='PACKAGE'&&<Inp label="Bitiş Tarihi" value={end} onChange={setEnd} type="date" required/>}
+    {conflict&&<div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 text-amber-700 text-sm">
+      <i className="fas fa-exclamation-triangle text-amber-500"/>Bu tarihte başka tur var!
+    </div>}
+    <Inp label="Notlar" value={notes} onChange={setNotes} placeholder="İsteğe bağlı..." multiline/>
+    <Btn label={editTour?'Kaydet':'Tur Ekle'} icon="check" onClick={save} full size="lg"/>
+  </Modal>;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   TOUR DETAIL MODAL
+═══════════════════════════════════════════════════════════ */
+function TourDetailModal({open,onClose,tour,onEdit,onAddIncome}){
+  const {state,dispatch}=useApp();
+  if(!tour) return null;
+  const agency=state.agencies.find(a=>a.id===tour.agencyId);
+  const st=tourStatus(tour);
+  const total=tourTotal(tour);
+  const base=baseIncome(tour);
+
+  const payBadge={PAID:{v:'success',l:'Ödendi'},PARTIAL:{v:'warning',l:'Kısmi'},UNPAID:{v:'danger',l:'Ödenmedi'}};
+
+  const commByCat=useMemo(()=>{
+    const m=new Map();
+    (tour.commissions||[]).forEach(c=>m.set(c.category,(m.get(c.category)||0)+c.amount));
+    return Array.from(m.entries());
+  },[tour.commissions]);
+
+  const setPayment=(status)=>{
+    const amt=status==='PAID'?base:status==='PARTIAL'?Math.round(base/2):0;
+    dispatch({type:'UPD_PAY',p:{id:tour.id,status,amt}});
+  };
+
+  const deleteTour=()=>{
+    if(confirm(`"${tour.title}" silinsin mi?`)){dispatch({type:'DEL_TOUR',p:tour.id});onClose();}
+  };
+
+  return <Modal open={open} onClose={onClose} title="Tur Detayı" size="lg">
+    {/* Tour header */}
+    <div className="bg-stone-50 rounded-2xl p-4 mb-4">
+      <div className="flex justify-between items-start mb-2">
+        <div>
+          <h3 className="font-bold text-stone-800 text-base">{tour.title}</h3>
+          <p className="text-sm text-stone-500">{agency?.name||'Ajans Yok'}</p>
+        </div>
+        <Badge label={st==='CURRENT'?'Aktif':st==='UPCOMING'?'Yaklaşan':'Geçmiş'}
+          variant={st==='CURRENT'?'success':st==='UPCOMING'?'info':'neutral'}/>
+      </div>
+      <div className="flex gap-3 text-xs text-stone-500 mt-2">
+        <span><i className="fas fa-calendar mr-1 text-amber-500"/>{fmtDate(tour.startDate)}{tour.startDate!==tour.endDate?` → ${fmtDate(tour.endDate)}`:''}</span>
+        <span><i className="fas fa-clock mr-1 text-amber-500"/>{duration(tour)} gün</span>
+      </div>
+    </div>
+
+    {/* Payment */}
+    <div className="bg-white border border-stone-100 rounded-2xl p-4 mb-4">
+      <div className="flex justify-between items-center mb-3">
+        <span className="font-semibold text-stone-700 text-sm">Ödeme Durumu</span>
+        <Badge label={payBadge[tour.paymentStatus]?.l} variant={payBadge[tour.paymentStatus]?.v}/>
+      </div>
+      <div className="flex gap-2">
+        {['UNPAID','PARTIAL','PAID'].map(s=>(
+          <button key={s} onClick={()=>setPayment(s)}
+            className={`flex-1 py-2 rounded-xl text-xs font-semibold border-2 transition-all ${tour.paymentStatus===s?'bg-amber-500 border-amber-500 text-white':'bg-white border-stone-200 text-stone-600 hover:border-amber-300'}`}>
+            {s==='PAID'?'Ödendi':s==='PARTIAL'?'Kısmi':'Bekliyor'}
+          </button>
+        ))}
+      </div>
+    </div>
+
+    {/* Income breakdown */}
+    <div className="bg-white border border-stone-100 rounded-2xl p-4 mb-4">
+      <h4 className="font-semibold text-stone-700 text-sm mb-3">Gelir Özeti</h4>
+      {[
+        ['Yevmiye',`${fmt(tour.dailyRate)} × ${duration(tour)} gün`,base],
+        tipsTotal(tour)>0&&['Bahşiş',`${(tour.tips||[]).length} adet`,tipsTotal(tour)],
+        commTotal(tour)>0&&['Komisyon',`${(tour.commissions||[]).length} adet`,commTotal(tour)],
+      ].filter(Boolean).map(([label,sub,val])=>(
+        <div key={label} className="flex justify-between items-center py-2 border-b border-stone-50 last:border-0">
+          <div><p className="text-sm text-stone-700">{label}</p><p className="text-xs text-stone-400">{sub}</p></div>
+          <span className="font-semibold text-stone-800">{fmt(val)}</span>
+        </div>
+      ))}
+      <div className="flex justify-between items-center pt-3 mt-1 border-t-2 border-stone-100">
+        <span className="font-bold text-stone-800">Toplam</span>
+        <span className="font-bold text-amber-700 text-lg">{fmt(total)}</span>
+      </div>
+    </div>
+
+    {/* Commission by category */}
+    {commByCat.length>0&&<div className="bg-white border border-stone-100 rounded-2xl p-4 mb-4">
+      <h4 className="font-semibold text-stone-700 text-sm mb-3">Komisyon Detayı</h4>
+      {commByCat.map(([cat,amt])=>(
+        <div key={cat} className="flex justify-between py-1.5 text-sm">
+          <span className="text-stone-500">• {cat}</span>
+          <span className="font-medium text-stone-700">{fmt(amt)}</span>
+        </div>
+      ))}
+    </div>}
+
+    {tour.notes&&<div className="bg-stone-50 rounded-xl p-3 mb-4 text-sm text-stone-600">{tour.notes}</div>}
+
+    <div className="flex gap-2">
+      <Btn label="Bahşiş/Komisyon" icon="plus" onClick={()=>{onAddIncome();}} variant="secondary" full/>
+      <Btn label="" icon="edit" onClick={onEdit} variant="outline"/>
+      <Btn label="" icon="trash" onClick={deleteTour} variant="danger"/>
+    </div>
+  </Modal>;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   EXTRA INCOME MODAL
+═══════════════════════════════════════════════════════════ */
+function ExtraIncomeModal({open,onClose,tourId}){
+  const {state,dispatch}=useApp();
+  const [itype,setItype]=useState('TIP');
+  const [amount,setAmount]=useState('');
+  const [note,setNote]=useState('');
+  const [cat,setCat]=useState(COMM_CATS[0]);
+  const tour=state.tours.find(t=>t.id===tourId);
+
+  useEffect(()=>{if(open){setItype('TIP');setAmount('');setNote('');setCat(COMM_CATS[0]);};},[open]);
+
+  const save=()=>{
+    const amt=parseFloat(amount.replace(',','.'))||0;
+    if(!amt||amt<=0) return;
+    if(itype==='TIP') dispatch({type:'ADD_TIP',p:{tid:tourId,tip:{id:uid('tip'),amount:amt,note:note.trim()||undefined}}});
+    else dispatch({type:'ADD_COMM',p:{tid:tourId,comm:{id:uid('comm'),category:cat,amount:amt}}});
+    onClose();
+  };
+
+  return <Modal open={open} onClose={onClose} title="Ekstra Gelir Ekle">
+    {tour&&<div className="flex items-center gap-2 bg-amber-50 rounded-xl px-3 py-2 mb-4">
+      <i className="fas fa-map text-amber-600 text-sm"/><span className="text-amber-800 text-sm font-medium">{tour.title}</span>
+    </div>}
+    <div className="flex gap-3 mb-5">
+      {[{v:'TIP',icon:'gift',l:'Bahşiş'},{v:'COMMISSION',icon:'store',l:'Komisyon'}].map(x=>(
+        <button key={x.v} onClick={()=>setItype(x.v)}
+          className={`flex-1 flex flex-col items-center gap-2 py-4 rounded-2xl border-2 font-semibold text-sm transition-all ${itype===x.v?'bg-amber-500 border-amber-500 text-white':'bg-white border-stone-200 text-stone-600'}`}>
+          <i className={`fas fa-${x.icon} text-lg`}/>{x.l}
+        </button>
+      ))}
+    </div>
+    {itype==='COMMISSION'&&<>
+      <p className="text-xs text-stone-500 font-medium mb-2">Kategori</p>
+      <ChipSelector options={COMM_CATS} value={cat} onChange={setCat}/>
+    </>}
+    <Inp label="Tutar (₺)" value={amount} onChange={setAmount} type="number" placeholder="0" required/>
+    {itype==='TIP'&&<Inp label="Not (isteğe bağlı)" value={note} onChange={setNote} placeholder="Örn: Alman grup"/>}
+    <Btn label={itype==='TIP'?'Bahşiş Ekle':'Komisyon Ekle'} icon="check" onClick={save} full size="lg"/>
+  </Modal>;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   EXPENSE FORM MODAL
+═══════════════════════════════════════════════════════════ */
+function ExpenseFormModal({open,onClose}){
+  const {state,dispatch}=useApp();
+  const [title,setTitle]=useState('');
+  const [amount,setAmount]=useState('');
+  const [cat,setCat]=useState(state.expCats[0]);
+  const [date,setDate]=useState(todayStr());
+  const [recurring,setRecurring]=useState(false);
+  const [months,setMonths]=useState('12');
+  const [newCat,setNewCat]=useState('');
+  const [showNewCat,setShowNewCat]=useState(false);
+  const [errs,setErrs]=useState({});
+
+  useEffect(()=>{if(open){setTitle('');setAmount('');setCat(state.expCats[0]);setDate(todayStr());setRecurring(false);setMonths('12');setNewCat('');setShowNewCat(false);setErrs({});};},[open]);
+
+  const addCat=()=>{
+    const t=newCat.trim();
+    if(!t) return;
+    dispatch({type:'ADD_ECAT',p:t});
+    setCat(t); setNewCat(''); setShowNewCat(false);
+  };
+
+  const save=()=>{
+    const e={};
+    if(!title.trim()) e.title='Başlık zorunludur';
+    if(!amount||parseFloat(amount)<=0) e.amount='Geçerli tutar girin';
+    if(Object.keys(e).length){setErrs(e);return;}
+    const amt=parseFloat(amount.replace(',','.'))||0;
+    const n=recurring?Math.min(60,Math.max(1,parseInt(months)||1)):1;
+    const now=new Date().toISOString();
+    for(let i=0;i<n;i++){
+      const d=new Date(date); d.setMonth(d.getMonth()+i);
+      const last=new Date(d.getFullYear(),d.getMonth()+1,0).getDate();
+      if(d.getDate()>last) d.setDate(last);
+      const ds=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      dispatch({type:'ADD_EXP',p:{id:uid('exp'),title:title.trim(),amount:amt,category:cat,date:ds,isRecurring:recurring,recurrenceMonths:recurring?n:undefined,createdAt:now}});
+    }
+    onClose();
+  };
+
+  return <Modal open={open} onClose={onClose} title="Yeni Gider">
+    <Inp label="Başlık" value={title} onChange={setTitle} placeholder="Örn: Ocak Kirası" required error={errs.title}/>
+    <Inp label="Tutar (₺)" value={amount} onChange={setAmount} type="number" placeholder="0" required error={errs.amount}/>
+    <div className="mb-4">
+      <p className="text-xs text-stone-500 font-medium mb-2">Kategori</p>
+      <div className="flex flex-wrap gap-2">
+        {state.expCats.map(c=><button key={c} onClick={()=>setCat(c)}
+          className={`px-3 py-1.5 rounded-2xl text-sm font-medium border-2 transition-all ${c===cat?'bg-amber-500 border-amber-500 text-white':'bg-white border-stone-200 text-stone-600'}`}>{c}</button>)}
+        <button onClick={()=>setShowNewCat(!showNewCat)} className="px-3 py-1.5 rounded-2xl text-sm font-medium border-2 border-dashed border-amber-400 text-amber-600">
+          <i className="fas fa-plus text-xs"/>
+        </button>
+      </div>
+      {showNewCat&&<div className="flex gap-2 mt-2">
+        <input className="flex-1 px-3 py-2 text-sm border-2 border-stone-200 rounded-xl focus:border-amber-400" value={newCat} onChange={e=>setNewCat(e.target.value)} placeholder="Yeni kategori"/>
+        <button onClick={addCat} className="px-3 bg-amber-500 text-white rounded-xl text-sm"><i className="fas fa-check"/></button>
+      </div>}
+    </div>
+    <Inp label="Tarih" value={date} onChange={setDate} type="date" required/>
+    <div className="flex items-center justify-between bg-stone-50 rounded-xl p-3 mb-4">
+      <div><p className="text-sm font-medium text-stone-700">Tekrarlayan</p><p className="text-xs text-stone-400">Sonraki aylara otomatik ekle</p></div>
+      <button onClick={()=>setRecurring(!recurring)} className={`w-12 h-6 rounded-full transition-all ${recurring?'bg-amber-500':'bg-stone-200'} relative`}>
+        <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${recurring?'left-6.5':'left-0.5'}`} style={{left:recurring?26:2}}/>
+      </button>
+    </div>
+    {recurring&&<Inp label="Kaç ay?" value={months} onChange={setMonths} type="number" hint={`${parseInt(months)||1} aylık gider eklenir`}/>}
+    <Btn label="Gider Ekle" icon="check" onClick={save} full size="lg"/>
+  </Modal>;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   AGENCY FORM MODAL
+═══════════════════════════════════════════════════════════ */
+function AgencyFormModal({open,onClose,editAgency=null}){
+  const {dispatch}=useApp();
+  const [name,setName]=useState('');
+  const [rate,setRate]=useState('1500');
+  const [contact,setContact]=useState('');
+  const [phone,setPhone]=useState('');
+  const [notes,setNotes]=useState('');
+  const [errs,setErrs]=useState({});
+
+  useEffect(()=>{
+    if(open){setName(editAgency?.name||'');setRate(String(editAgency?.dailyRate||1500));setContact(editAgency?.contactPerson||'');setPhone(editAgency?.phone||'');setNotes(editAgency?.notes||'');setErrs({});}
+  },[open,editAgency]);
+
+  const save=()=>{
+    const e={};
+    if(!name.trim()) e.name='Ajans adı zorunludur';
+    if(Object.keys(e).length){setErrs(e);return;}
+    const agency={id:editAgency?.id||uid('agency'),name:name.trim(),dailyRate:parseFloat(rate)||0,contactPerson:contact.trim()||undefined,phone:phone.trim()||undefined,notes:notes.trim()||undefined,createdAt:editAgency?.createdAt||new Date().toISOString()};
+    dispatch({type:editAgency?'UPD_AGENCY':'ADD_AGENCY',p:agency});
+    onClose();
+  };
+
+  return <Modal open={open} onClose={onClose} title={editAgency?'Ajansı Düzenle':'Yeni Ajans'}>
+    <Inp label="Ajans Adı" value={name} onChange={setName} placeholder="Örn: TUI, Neckermann" required error={errs.name}/>
+    <Inp label="Varsayılan Yevmiye (₺)" value={rate} onChange={setRate} type="number" placeholder="1500" hint="Tur eklerken otomatik dolar"/>
+    <Inp label="İletişim Kişisi" value={contact} onChange={setContact} placeholder="Ad Soyad"/>
+    <Inp label="Telefon" value={phone} onChange={setPhone} placeholder="+90 555 000 00 00"/>
+    <Inp label="Notlar" value={notes} onChange={setNotes} multiline placeholder="İsteğe bağlı..."/>
+    <Btn label={editAgency?'Kaydet':'Ajans Ekle'} icon="check" onClick={save} full size="lg"/>
+  </Modal>;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   DASHBOARD TAB
+═══════════════════════════════════════════════════════════ */
+function Dashboard({setTab,openTourForm,openExpForm,openReports}){
+  const {state}=useApp();
+  const [period,setPeriod]=useState('month');
+  const [detailTour,setDetailTour]=useState(null);
+  const [extraTourId,setExtraTourId]=useState(null);
+
+  const now=new Date();
+  const CM=now.getMonth()+1, CY=now.getFullYear();
+
+  const tours=useMemo(()=>{
+    if(period==='all') return state.tours;
+    return state.tours.filter(t=>{
+      const [y,m]=t.startDate.split('-').map(Number);
+      if(period==='year') return y===CY;
+      return y===CY&&m===CM;
+    });
+  },[state.tours,period,CM,CY]);
+
+  const expenses=useMemo(()=>{
+    if(period==='all') return state.expenses;
+    return state.expenses.filter(e=>{
+      const [y,m]=e.date.split('-').map(Number);
+      if(period==='year') return y===CY;
+      return y===CY&&m===CM;
+    });
+  },[state.expenses,period,CM,CY]);
+
+  const s=useMemo(()=>summary(tours,expenses),[tours,expenses]);
+  const agMap=useMemo(()=>new Map(state.agencies.map(a=>[a.id,a])),[state.agencies]);
+
+  const upcoming=useMemo(()=>state.tours.filter(t=>tourStatus(t)!=='PAST').sort((a,b)=>a.startDate.localeCompare(b.startDate)).slice(0,4),[state.tours]);
+
+  const periodLabel=period==='month'?`${TR_MONTHS[CM-1]} ${CY}`:period==='year'?`${CY} Yılı`:'Tüm Zamanlar';
+
+  return <div className="flex-1 overflow-y-auto pb-24">
+    <div className="p-4">
+      {/* Period selector */}
+      <div className="flex bg-white rounded-2xl p-1 mb-4 shadow-sm">
+        {[{v:'month',l:'Bu Ay'},{v:'year',l:'Bu Yıl'},{v:'all',l:'Tümü'}].map(x=>(
+          <button key={x.v} onClick={()=>setPeriod(x.v)} className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-all ${period===x.v?'bg-amber-500 text-white shadow':'text-stone-500'}`}>{x.l}</button>
+        ))}
+      </div>
+
+      {/* Net profit card */}
+      <div className="gradient-card rounded-3xl p-5 mb-5 text-white">
+        <div className="flex justify-between items-start mb-1">
+          <span className="text-amber-100 text-sm">{periodLabel}</span>
+          <span className="bg-white/20 rounded-lg px-2 py-0.5 text-xs font-bold">
+            {s.margin>0?'+':''}{s.margin}%
+          </span>
+        </div>
+        <p className="text-amber-100 text-xs mb-1">Net Kazanç</p>
+        <p className="text-4xl font-black tracking-tight mb-5">{fmt(s.net)}</p>
+        <div className="flex gap-6 pt-4 border-t border-white/20">
+          <div><p className="text-amber-100 text-xs mb-1">Toplam Gelir</p><p className="font-bold text-lg">{fmt(s.inc)}</p></div>
+          <div className="w-px bg-white/20"/>
+          <div><p className="text-amber-100 text-xs mb-1">Toplam Gider</p><p className="font-bold text-lg">{fmt(s.exp)}</p></div>
+        </div>
+      </div>
+
+      {/* Income cards */}
+      <p className="text-xs text-stone-500 font-bold uppercase tracking-wide mb-3">Gelir Detayı</p>
+      <div className="grid grid-cols-2 gap-3 mb-3">
+        <StatCard title="Yevmiyeler" value={fmt(s.dr)} icon="briefcase" color="text-amber-700" bg="bg-amber-50"/>
+        <StatCard title="Komisyonlar" value={fmt(s.cm)} icon="store" color="text-violet-600" bg="bg-violet-50"/>
+      </div>
+      <div className="grid grid-cols-2 gap-3 mb-5">
+        <StatCard title="Bahşişler" value={fmt(s.ti)} icon="gift" color="text-emerald-600" bg="bg-emerald-50"/>
+        <StatCard title="Alacaklar" value={fmt(s.unpaid)} sub="Ödenmemiş" icon="clock" color="text-rose-500" bg="bg-rose-50"/>
+      </div>
+
+      {/* Stats row */}
+      <div className="grid grid-cols-2 gap-3 mb-5">
+        <StatCard title="Toplam Gider" value={fmt(s.exp)} icon="trending-down" color="text-red-500" bg="bg-red-50"/>
+        <StatCard title="Tur Sayısı" value={`${tours.length} Tur`} icon="map" color="text-blue-600" bg="bg-blue-50"/>
+      </div>
+
+      {/* Quick actions */}
+      <div className="flex gap-2 mb-5">
+        <Btn label="Tur Ekle" icon="plus" onClick={openTourForm} variant="primary" full/>
+        <Btn label="Gider Ekle" icon="plus" onClick={openExpForm} variant="secondary" full/>
+        <Btn label="" icon="chart-bar" onClick={openReports} variant="outline"/>
+      </div>
+
+      {/* Upcoming tours */}
+      {upcoming.length>0&&<>
+        <div className="flex justify-between items-center mb-3">
+          <p className="text-xs text-stone-500 font-bold uppercase tracking-wide">Güncel & Yaklaşan</p>
+          <button onClick={()=>setTab('tours')} className="text-xs text-amber-600 font-semibold">Tümünü gör →</button>
+        </div>
+        {upcoming.map(t=><TourCardRow key={t.id} tour={t} agency={agMap.get(t.agencyId)}
+          onPress={()=>setDetailTour(t)} onAddIncome={()=>setExtraTourId(t.id)}/>)}
+      </>}
+    </div>
+
+    <TourDetailModal open={!!detailTour} onClose={()=>setDetailTour(null)} tour={detailTour}
+      onEdit={()=>{/* handled via modal */}} onAddIncome={()=>{setExtraTourId(detailTour?.id);setDetailTour(null);}}/>
+    <ExtraIncomeModal open={!!extraTourId} onClose={()=>setExtraTourId(null)} tourId={extraTourId}/>
+  </div>;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   TOUR CARD ROW (reusable)
+═══════════════════════════════════════════════════════════ */
+function TourCardRow({tour,agency,onPress,onAddIncome}){
+  const st=tourStatus(tour);
+  const accent={CURRENT:'bg-green-400',UPCOMING:'bg-blue-400',PAST:'bg-stone-300'}[st];
+  const stBadge={CURRENT:{v:'success',l:'Aktif'},UPCOMING:{v:'info',l:'Yaklaşan'},PAST:{v:'neutral',l:'Geçmiş'}}[st];
+  const payBadge={PAID:{v:'success',l:'Ödendi'},PARTIAL:{v:'warning',l:'Kısmi'},UNPAID:{v:'danger',l:'Bekliyor'}}[tour.paymentStatus];
+
+  return <div className="bg-white rounded-2xl mb-2.5 flex overflow-hidden shadow-sm active:scale-99 cursor-pointer" onClick={onPress}>
+    <div className={`w-1 ${accent} flex-shrink-0`}/>
+    <div className="flex-1 p-3">
+      <div className="flex justify-between items-start mb-1.5">
+        <div className="flex-1 mr-2">
+          <p className="font-semibold text-stone-800 text-sm leading-tight">{tour.title}</p>
+          <p className="text-xs text-stone-400">{agency?.name||'Ajans Yok'}</p>
+        </div>
+        <p className="font-bold text-amber-700 text-base">{fmt(tourTotal(tour))}</p>
+      </div>
+      <div className="flex items-center gap-2 text-xs text-stone-400 mb-2">
+        <i className="fas fa-calendar text-amber-400"/>{fmtDate(tour.startDate)}{tour.startDate!==tour.endDate?` – ${fmtDate(tour.endDate)}`:''}
+      </div>
+      <div className="flex justify-between items-center">
+        <div className="flex gap-1.5">
+          <Badge label={stBadge.l} variant={stBadge.v}/>
+          <Badge label={payBadge.l} variant={payBadge.v}/>
+        </div>
+        {onAddIncome&&<button onClick={e=>{e.stopPropagation();onAddIncome();}} className="text-amber-500 hover:text-amber-600">
+          <i className="fas fa-plus-circle text-xl"/>
+        </button>}
+      </div>
+    </div>
+  </div>;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   TOURS TAB
+═══════════════════════════════════════════════════════════ */
+function Tours(){
+  const {state,dispatch}=useApp();
+  const [filter,setFilter]=useState('ALL');
+  const [detailTour,setDetailTour]=useState(null);
+  const [editTour,setEditTour]=useState(null);
+  const [extraTourId,setExtraTourId]=useState(null);
+  const [formOpen,setFormOpen]=useState(false);
+
+  const agMap=useMemo(()=>new Map(state.agencies.map(a=>[a.id,a])),[state.agencies]);
+
+  const filtered=useMemo(()=>{
+    const sorted=[...state.tours].sort((a,b)=>b.startDate.localeCompare(a.startDate));
+    if(filter==='ALL') return sorted;
+    return sorted.filter(t=>tourStatus(t)===filter);
+  },[state.tours,filter]);
+
+  const counts=useMemo(()=>({
+    ALL:state.tours.length,
+    CURRENT:state.tours.filter(t=>tourStatus(t)==='CURRENT').length,
+    UPCOMING:state.tours.filter(t=>tourStatus(t)==='UPCOMING').length,
+    PAST:state.tours.filter(t=>tourStatus(t)==='PAST').length,
+  }),[state.tours]);
+
+  return <div className="flex-1 overflow-y-auto pb-24">
+    {/* Filter tabs */}
+    <div className="px-4 pb-2 pt-1">
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {[{v:'ALL',l:'Tümü'},{v:'CURRENT',l:'Aktif'},{v:'UPCOMING',l:'Yaklaşan'},{v:'PAST',l:'Geçmiş'}].map(f=>(
+          <button key={f.v} onClick={()=>setFilter(f.v)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-2xl text-sm font-semibold whitespace-nowrap border-2 transition-all ${filter===f.v?'bg-amber-500 border-amber-500 text-white':'bg-white border-stone-200 text-stone-600'}`}>
+            {f.l}
+            {counts[f.v]>0&&<span className={`text-xs px-1.5 py-0.5 rounded-full ${filter===f.v?'bg-white/30':'bg-stone-100 text-stone-500'}`}>{counts[f.v]}</span>}
+          </button>
+        ))}
+      </div>
+    </div>
+
+    <div className="px-4">
+      {filtered.length===0
+        ? <div className="flex flex-col items-center py-16 text-center">
+            <div className="w-20 h-20 bg-stone-100 rounded-3xl flex items-center justify-center mb-4">
+              <i className="fas fa-map text-3xl text-stone-300"/>
+            </div>
+            <p className="font-semibold text-stone-600 mb-1">Tur bulunamadı</p>
+            <p className="text-sm text-stone-400 mb-5">{filter==='ALL'?'İlk turunuzu ekleyin':'Bu filtrede tur yok'}</p>
+            {filter==='ALL'&&<Btn label="Tur Ekle" icon="plus" onClick={()=>setFormOpen(true)}/>}
+          </div>
+        : filtered.map(t=><TourCardRow key={t.id} tour={t} agency={agMap.get(t.agencyId)}
+            onPress={()=>setDetailTour(t)} onAddIncome={()=>setExtraTourId(t.id)}/>)
+      }
+    </div>
+
+    {/* FAB */}
+    <button onClick={()=>setFormOpen(true)} className="fixed bottom-20 right-4 w-14 h-14 bg-amber-500 rounded-full shadow-lg flex items-center justify-center text-white text-2xl hover:bg-amber-600 active:scale-95 transition-all z-40" style={{maxWidth:'calc(430px - 1rem)',right:'max(1rem,calc(50% - 215px + 1rem))'}}>
+      <i className="fas fa-plus"/>
+    </button>
+
+    <TourFormModal open={formOpen} onClose={()=>setFormOpen(false)}/>
+    <TourDetailModal open={!!detailTour} onClose={()=>setDetailTour(null)} tour={detailTour}
+      onEdit={()=>{setEditTour(detailTour);setDetailTour(null);}} onAddIncome={()=>{setExtraTourId(detailTour?.id);setDetailTour(null);}}/>
+    <TourFormModal open={!!editTour} onClose={()=>setEditTour(null)} editTour={editTour}/>
+    <ExtraIncomeModal open={!!extraTourId} onClose={()=>setExtraTourId(null)} tourId={extraTourId}/>
+  </div>;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CALENDAR TAB
+═══════════════════════════════════════════════════════════ */
+function Calendar(){
+  const {state}=useApp();
+  const today=new Date();
+  const [vYear,setVYear]=useState(today.getFullYear());
+  const [vMonth,setVMonth]=useState(today.getMonth());
+  const [selDate,setSelDate]=useState(null);
+  const [detailTour,setDetailTour]=useState(null);
+  const [extraTourId,setExtraTourId]=useState(null);
+  const agMap=useMemo(()=>new Map(state.agencies.map(a=>[a.id,a])),[state.agencies]);
+
+  const tourDays=useMemo(()=>{
+    const m=new Map();
+    state.tours.forEach(t=>{
+      const s=new Date(t.startDate), e=new Date(t.endDate), c=new Date(s);
+      while(c<=e){
+        const k=`${c.getFullYear()}-${String(c.getMonth()+1).padStart(2,'0')}-${String(c.getDate()).padStart(2,'0')}`;
+        if(!m.has(k)) m.set(k,[]);
+        m.get(k).push(t.id);
+        c.setDate(c.getDate()+1);
+      }
+    });
+    return m;
+  },[state.tours]);
+
+  const cells=useMemo(()=>{
+    const first=new Date(vYear,vMonth,1);
+    let dow=first.getDay()-1; if(dow<0) dow=6;
+    const dim=new Date(vYear,vMonth+1,0).getDate();
+    const arr=Array(dow).fill(null);
+    for(let d=1;d<=dim;d++) arr.push(d);
+    while(arr.length%7!==0) arr.push(null);
+    return arr;
+  },[vYear,vMonth]);
+
+  const nav=(d)=>{const x=new Date(vYear,vMonth+d,1);setVYear(x.getFullYear());setVMonth(x.getMonth());setSelDate(null);};
+
+  const todayStr2=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+
+  const selTours=useMemo(()=>{
+    if(!selDate) return [];
+    return state.tours.filter(t=>(tourDays.get(selDate)||[]).includes(t.id));
+  },[selDate,tourDays,state.tours]);
+
+  const monthIncome=useMemo(()=>state.tours.filter(t=>{const [y,m]=t.startDate.split('-').map(Number);return y===vYear&&m===vMonth+1;}).reduce((s,t)=>s+tourTotal(t),0),[state.tours,vYear,vMonth]);
+
+  return <div className="flex-1 overflow-y-auto pb-24">
+    <div className="p-4">
+      {/* Month nav */}
+      <div className="flex items-center justify-between mb-4">
+        <button onClick={()=>nav(-1)} className="w-10 h-10 bg-white rounded-xl shadow-sm flex items-center justify-center text-stone-600 hover:bg-stone-50"><i className="fas fa-chevron-left"/></button>
+        <div className="text-center">
+          <p className="font-bold text-stone-800 text-lg">{TR_MONTHS[vMonth]} {vYear}</p>
+          {monthIncome>0&&<p className="text-xs text-amber-600 font-semibold">{fmt(monthIncome)}</p>}
+        </div>
+        <button onClick={()=>nav(1)} className="w-10 h-10 bg-white rounded-xl shadow-sm flex items-center justify-center text-stone-600 hover:bg-stone-50"><i className="fas fa-chevron-right"/></button>
+      </div>
+
+      {/* Calendar grid */}
+      <div className="bg-white rounded-3xl p-4 shadow-sm mb-4">
+        <div className="grid grid-cols-7 mb-2">
+          {TR_DAYS.map(d=><div key={d} className="text-center text-xs text-stone-400 font-bold py-1">{d}</div>)}
+        </div>
+        <div className="grid grid-cols-7 gap-y-1">
+          {cells.map((day,i)=>{
+            if(!day) return <div key={i}/>;
+            const ds=`${vYear}-${String(vMonth+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+            const isToday=ds===todayStr2, isSel=ds===selDate, hasTour=tourDays.has(ds);
+            return <button key={i} onClick={()=>setSelDate(isSel?null:ds)}
+              className={`aspect-square flex flex-col items-center justify-center rounded-xl transition-all text-sm font-medium
+                ${isSel?'bg-amber-500 text-white':isToday?'bg-amber-100 text-amber-800 font-bold':'text-stone-700 hover:bg-stone-50'}`}>
+              {day}
+              {hasTour&&<div className={`w-1.5 h-1.5 rounded-full mt-0.5 ${isSel?'bg-white':'bg-amber-500'}`}/>}
+            </button>;
+          })}
+        </div>
+      </div>
+
+      {/* Selected day */}
+      {selDate&&<div className="fade-in">
+        <p className="text-sm font-bold text-stone-700 mb-3">
+          {fmtDate(selDate)} — {selTours.length>0?`${selTours.length} Tur`:'Tur Yok'}
+        </p>
+        {selTours.map(t=><TourCardRow key={t.id} tour={t} agency={agMap.get(t.agencyId)}
+          onPress={()=>setDetailTour(t)} onAddIncome={()=>setExtraTourId(t.id)}/>)}
+      </div>}
+    </div>
+
+    <TourDetailModal open={!!detailTour} onClose={()=>setDetailTour(null)} tour={detailTour}
+      onEdit={()=>{}} onAddIncome={()=>{setExtraTourId(detailTour?.id);setDetailTour(null);}}/>
+    <ExtraIncomeModal open={!!extraTourId} onClose={()=>setExtraTourId(null)} tourId={extraTourId}/>
+  </div>;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   EXPENSES TAB
+═══════════════════════════════════════════════════════════ */
+function Expenses(){
+  const {state,dispatch}=useApp();
+  const [selCat,setSelCat]=useState('Tümü');
+  const [formOpen,setFormOpen]=useState(false);
+
+  const cats=useMemo(()=>['Tümü',...new Set(state.expenses.map(e=>e.category))]   ,[state.expenses]);
+  const filtered=useMemo(()=>{
+    const s=[...state.expenses].sort((a,b)=>b.date.localeCompare(a.date));
+    return selCat==='Tümü'?s:s.filter(e=>e.category===selCat);
+  },[state.expenses,selCat]);
+  const total=filtered.reduce((s,e)=>s+e.amount,0);
+
+  const catIcon={Kira:'home',Bağkur:'shield-alt',Ulaşım:'car',Yemek:'utensils',Fatura:'file-invoice',Telefon:'mobile-alt',Sağlık:'heartbeat',Diğer:'ellipsis-h'};
+
+  return <div className="flex-1 overflow-y-auto pb-24">
+    {/* Category filter */}
+    <div className="px-4 pt-1 pb-2">
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {cats.map(c=><button key={c} onClick={()=>setSelCat(c)}
+          className={`px-3 py-1.5 rounded-2xl text-sm font-semibold whitespace-nowrap border-2 transition-all ${c===selCat?'bg-amber-500 border-amber-500 text-white':'bg-white border-stone-200 text-stone-600'}`}>
+          {c}
+        </button>)}
+      </div>
+    </div>
+    {filtered.length>0&&<div className="px-4 mb-2 text-sm text-stone-500">Toplam: <span className="font-bold text-red-500">{fmt(total)}</span></div>}
+
+    <div className="px-4">
+      {filtered.length===0
+        ? <div className="flex flex-col items-center py-16 text-center">
+            <div className="w-20 h-20 bg-stone-100 rounded-3xl flex items-center justify-center mb-4">
+              <i className="fas fa-wallet text-3xl text-stone-300"/>
+            </div>
+            <p className="font-semibold text-stone-600 mb-1">Gider kaydı yok</p>
+            <p className="text-sm text-stone-400 mb-5">Kira, Bağkur gibi giderlerinizi ekleyin</p>
+            <Btn label="Gider Ekle" icon="plus" onClick={()=>setFormOpen(true)}/>
+          </div>
+        : filtered.map(e=>(
+          <div key={e.id} className="bg-white rounded-2xl mb-2 flex items-center gap-3 p-3.5 shadow-sm">
+            <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center flex-shrink-0">
+              <i className={`fas fa-${catIcon[e.category]||'circle'} text-amber-600`}/>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-stone-800 text-sm truncate">{e.title}</p>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className="text-xs text-stone-400">{e.category}</span>
+                {e.isRecurring&&<span className="text-xs bg-blue-100 text-blue-600 px-1.5 rounded-full font-medium"><i className="fas fa-sync text-xs mr-0.5"/>Tekr.</span>}
+                <span className="text-xs text-stone-300">{fmtDate(e.date)}</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-red-500 text-sm">{fmt(e.amount)}</span>
+              <button onClick={()=>{ if(confirm(`"${e.title}" silinsin mi?`)) dispatch({type:'DEL_EXP',p:e.id}); }}
+                className="w-7 h-7 rounded-lg flex items-center justify-center text-stone-300 hover:text-red-400 hover:bg-red-50">
+                <i className="fas fa-trash text-xs"/>
+              </button>
+            </div>
+          </div>
+        ))
+      }
+    </div>
+
+    <button onClick={()=>setFormOpen(true)} className="fixed bottom-20 right-4 w-14 h-14 bg-amber-500 rounded-full shadow-lg flex items-center justify-center text-white text-2xl hover:bg-amber-600 active:scale-95 transition-all z-40">
+      <i className="fas fa-plus"/>
+    </button>
+    <ExpenseFormModal open={formOpen} onClose={()=>setFormOpen(false)}/>
+  </div>;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   REPORTS MODAL
+═══════════════════════════════════════════════════════════ */
+function ReportsModal({open,onClose}){
+  const {state}=useApp();
+  const [tab,setTab]=useState('monthly');
+
+  const monthlyData=useMemo(()=>{
+    const rows=[];
+    const now=new Date();
+    for(let i=11;i>=0;i--){
+      const d=new Date(now.getFullYear(),now.getMonth()-i,1);
+      const y=d.getFullYear(), m=d.getMonth()+1;
+      const mTours=state.tours.filter(t=>{const[ty,tm]=t.startDate.split('-').map(Number);return ty===y&&tm===m;});
+      const mExp=state.expenses.filter(e=>{const[ey,em]=e.date.split('-').map(Number);return ey===y&&em===m;});
+      const inc=mTours.reduce((s,t)=>s+tourTotal(t),0);
+      const exp=mExp.reduce((s,e)=>s+e.amount,0);
+      rows.push({label:`${TR_MONTHS[m-1].slice(0,3)} ${y}`,inc,exp,net:inc-exp,count:mTours.length});
+    }
+    return rows;
+  },[state.tours,state.expenses]);
+
+  const agData=useMemo(()=>state.agencies.map(a=>{
+    const ts=state.tours.filter(t=>t.agencyId===a.id);
+    const inc=ts.reduce((s,t)=>s+tourTotal(t),0);
+    const dr=ts.reduce((s,t)=>s+baseIncome(t),0);
+    const cm=ts.reduce((s,t)=>s+commTotal(t),0);
+    const ti=ts.reduce((s,t)=>s+tipsTotal(t),0);
+    const unp=ts.filter(t=>t.paymentStatus!=='PAID').reduce((s,t)=>s+baseIncome(t)-(t.paidAmount||0),0);
+    return {name:a.name,count:ts.length,inc,dr,cm,ti,unp};
+  }).filter(x=>x.count>0).sort((a,b)=>b.inc-a.inc),[state.tours,state.agencies]);
+
+  const maxInc=Math.max(...monthlyData.map(r=>r.inc),1);
+  const maxAg=Math.max(...agData.map(r=>r.inc),1);
+
+  const totalY=monthlyData.slice(-12);
+  const yInc=totalY.reduce((s,r)=>s+r.inc,0);
+  const yExp=totalY.reduce((s,r)=>s+r.exp,0);
+
+  const exportCSV=()=>{
+    const rows=[['Ay','Gelir','Gider','Net Kazanç','Tur Sayısı'],...monthlyData.map(r=>[r.label,r.inc,r.exp,r.net,r.count])];
+    const csv=rows.map(r=>r.join(',')).join('\n');
+    const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8;'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a'); a.href=url; a.download=`guidetrack-rapor-${todayStr()}.csv`; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return <Modal open={open} onClose={onClose} title="Raporlar" size="lg">
+    {/* Year summary */}
+    <div className="grid grid-cols-3 gap-2 mb-5">
+      {[['Gelir',fmt(yInc),'text-emerald-600'],['Gider',fmt(yExp),'text-red-500'],['Net',fmt(yInc-yExp),yInc-yExp>=0?'text-emerald-600':'text-red-500']].map(([l,v,c])=>(
+        <div key={l} className="bg-stone-50 rounded-xl p-3 text-center">
+          <p className={`font-bold text-sm ${c}`}>{v}</p>
+          <p className="text-xs text-stone-400 mt-0.5">{l}</p>
+        </div>
+      ))}
+    </div>
+
+    {/* Tab */}
+    <div className="flex bg-stone-100 rounded-xl p-1 mb-4">
+      <button onClick={()=>setTab('monthly')} className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${tab==='monthly'?'bg-white shadow text-stone-800':'text-stone-500'}`}>Aylık</button>
+      <button onClick={()=>setTab('agency')} className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${tab==='agency'?'bg-white shadow text-stone-800':'text-stone-500'}`}>Ajans Bazlı</button>
+    </div>
+
+    {tab==='monthly'
+      ? monthlyData.map((r,i)=>(
+        <div key={i} className="mb-3">
+          <div className="flex justify-between items-baseline mb-1">
+            <span className="text-sm font-semibold text-stone-700">{r.label}</span>
+            <span className={`text-sm font-bold ${r.net>=0?'text-emerald-600':'text-red-500'}`}>{r.net>=0?'+':''}{fmt(r.net)}</span>
+          </div>
+          <div className="space-y-1">
+            <div className="flex items-center gap-2"><span className="text-xs text-stone-400 w-10">Gelir</span><div className="flex-1 h-2 bg-stone-100 rounded-full"><div className="h-full bg-emerald-400 rounded-full" style={{width:`${maxInc>0?(r.inc/maxInc*100):0}%`}}/></div><span className="text-xs text-stone-500 w-20 text-right">{fmt(r.inc)}</span></div>
+            <div className="flex items-center gap-2"><span className="text-xs text-stone-400 w-10">Gider</span><div className="flex-1 h-2 bg-stone-100 rounded-full"><div className="h-full bg-red-400 rounded-full" style={{width:`${maxInc>0?(r.exp/maxInc*100):0}%`}}/></div><span className="text-xs text-stone-500 w-20 text-right">{fmt(r.exp)}</span></div>
+          </div>
+        </div>
+      ))
+      : agData.length===0
+        ? <p className="text-center text-stone-400 py-8">Ajans verisi yok</p>
+        : agData.map((r,i)=>(
+          <div key={i} className="bg-stone-50 rounded-xl p-3 mb-2">
+            <div className="flex justify-between items-start mb-1.5">
+              <div><p className="font-semibold text-stone-800 text-sm">{r.name}</p><p className="text-xs text-stone-400">{r.count} tur</p></div>
+              <p className="font-bold text-amber-700">{fmt(r.inc)}</p>
+            </div>
+            <div className="h-1.5 bg-stone-200 rounded-full"><div className="h-full bg-amber-500 rounded-full" style={{width:`${maxAg>0?(r.inc/maxAg*100):0}%`}}/></div>
+            <div className="flex gap-3 mt-2 text-xs text-stone-500">
+              <span>Yevmiye: {fmt(r.dr)}</span>
+              <span>Komisyon: {fmt(r.cm)}</span>
+              {r.unp>0&&<span className="text-red-500">Alacak: {fmt(r.unp)}</span>}
+            </div>
+          </div>
+        ))
+    }
+
+    <div className="mt-4 pt-4 border-t border-stone-100">
+      <Btn label="CSV İndir" icon="download" onClick={exportCSV} variant="secondary" full/>
+    </div>
+  </Modal>;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SETTINGS TAB
+═══════════════════════════════════════════════════════════ */
+function Settings({openReports}){
+  const {state,dispatch}=useApp();
+  const [agFormOpen,setAgFormOpen]=useState(false);
+  const [editAgency,setEditAgency]=useState(null);
+
+  const exportAll=()=>{
+    const tourRows=[['Tur Adı','Ajans','Başlangıç','Bitiş','Yevmiye','Bahşiş','Komisyon','Toplam','Ödeme'],
+      ...state.tours.map(t=>{
+        const ag=state.agencies.find(a=>a.id===t.agencyId);
+        return [t.title,ag?.name||'',fmtDate(t.startDate),fmtDate(t.endDate),baseIncome(t),tipsTotal(t),commTotal(t),tourTotal(t),t.paymentStatus==='PAID'?'Ödendi':t.paymentStatus==='PARTIAL'?'Kısmi':'Ödenmedi'];
+      })
+    ];
+    const expRows=[['Başlık','Kategori','Tarih','Tutar'],
+      ...state.expenses.map(e=>[e.title,e.category,fmtDate(e.date),e.amount])
+    ];
+    const csv='\uFEFFTUR KAYITLARI\n'+tourRows.map(r=>r.join(',')).join('\n')+'\n\nGİDER KAYITLARI\n'+expRows.map(r=>r.join(',')).join('\n');
+    const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a'); a.href=url; a.download=`guidetrack-${todayStr()}.csv`; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const clearData=()=>{
+    if(confirm('Tüm veriler silinsin mi? Bu işlem geri alınamaz!')){
+      localStorage.clear(); location.reload();
+    }
+  };
+
+  return <div className="flex-1 overflow-y-auto pb-24">
+    <div className="p-4 space-y-4">
+      {/* Profile card */}
+      <div className="bg-white rounded-3xl p-5 shadow-sm flex items-center gap-4">
+        <div className="w-14 h-14 bg-amber-100 rounded-2xl flex items-center justify-center">
+          <i className="fas fa-user text-2xl text-amber-700"/>
+        </div>
+        <div>
+          <p className="font-bold text-stone-800 text-lg">Tur Rehberi</p>
+          <span className="inline-flex items-center gap-1 bg-stone-100 text-stone-500 text-xs font-semibold px-2 py-1 rounded-full">
+            <i className="fas fa-star text-amber-400 text-xs"/>Ücretsiz Plan
+          </span>
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div className="bg-white rounded-2xl p-4 shadow-sm flex justify-around text-center">
+        <div><p className="text-xl font-bold text-stone-800">{state.tours.length}</p><p className="text-xs text-stone-400">Tur</p></div>
+        <div className="w-px bg-stone-100"/>
+        <div><p className="text-xl font-bold text-stone-800">{state.agencies.length}</p><p className="text-xs text-stone-400">Ajans</p></div>
+        <div className="w-px bg-stone-100"/>
+        <div><p className="text-xl font-bold text-stone-800">{state.expenses.length}</p><p className="text-xs text-stone-400">Gider</p></div>
+      </div>
+
+      {/* Agencies */}
+      <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+        <div className="flex justify-between items-center px-4 py-3 border-b border-stone-50">
+          <p className="font-bold text-stone-700">Ajanslar</p>
+          <button onClick={()=>{setEditAgency(null);setAgFormOpen(true);}} className="w-8 h-8 bg-amber-500 rounded-xl flex items-center justify-center text-white text-sm hover:bg-amber-600">
+            <i className="fas fa-plus"/>
+          </button>
+        </div>
+        {state.agencies.map(a=>(
+          <div key={a.id} className="flex items-center gap-3 px-4 py-3 border-b border-stone-50 last:border-0">
+            <div className="w-9 h-9 bg-amber-50 rounded-xl flex items-center justify-center">
+              <i className="fas fa-building text-amber-600 text-sm"/>
+            </div>
+            <div className="flex-1">
+              <p className="font-medium text-stone-800 text-sm">{a.name}</p>
+              <p className="text-xs text-stone-400">{state.tours.filter(t=>t.agencyId===a.id).length} tur • {fmt(a.dailyRate)}/gün</p>
+            </div>
+            <div className="flex gap-1">
+              <button onClick={()=>{setEditAgency(a);setAgFormOpen(true);}} className="w-7 h-7 rounded-lg flex items-center justify-center text-stone-300 hover:text-amber-500 hover:bg-amber-50">
+                <i className="fas fa-edit text-xs"/>
+              </button>
+              <button onClick={()=>{
+                if(state.tours.some(t=>t.agencyId===a.id)){alert(`"${a.name}" ajansı turlarda kullanılıyor.`);return;}
+                if(confirm(`"${a.name}" silinsin mi?`)) dispatch({type:'DEL_AGENCY',p:a.id});
+              }} className="w-7 h-7 rounded-lg flex items-center justify-center text-stone-300 hover:text-red-400 hover:bg-red-50">
+                <i className="fas fa-trash text-xs"/>
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Actions */}
+      <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+        {[
+          {icon:'chart-bar',label:'Raporlar',sub:'Aylık ve ajans analizi',action:openReports,color:'text-violet-600',bg:'bg-violet-50'},
+          {icon:'download',label:'Verileri Dışa Aktar',sub:'CSV formatında Excel\'e',action:exportAll,color:'text-emerald-600',bg:'bg-emerald-50'},
+        ].map((row,i)=>(
+          <button key={i} onClick={row.action} className="w-full flex items-center gap-3 px-4 py-3.5 border-b border-stone-50 last:border-0 hover:bg-stone-50 text-left">
+            <div className={`w-9 h-9 ${row.bg} rounded-xl flex items-center justify-center`}>
+              <i className={`fas fa-${row.icon} ${row.color} text-sm`}/>
+            </div>
+            <div className="flex-1"><p className="font-medium text-stone-800 text-sm">{row.label}</p><p className="text-xs text-stone-400">{row.sub}</p></div>
+            <i className="fas fa-chevron-right text-stone-300 text-xs"/>
+          </button>
+        ))}
+      </div>
+
+      {/* Danger */}
+      <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+        <button onClick={clearData} className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-red-50 text-left">
+          <div className="w-9 h-9 bg-red-50 rounded-xl flex items-center justify-center">
+            <i className="fas fa-trash text-red-500 text-sm"/>
+          </div>
+          <div className="flex-1"><p className="font-medium text-red-600 text-sm">Tüm Verileri Sil</p><p className="text-xs text-stone-400">Bu işlem geri alınamaz</p></div>
+        </button>
+      </div>
+
+      <p className="text-center text-xs text-stone-300 pb-2">GuideTrack v1.0.0</p>
+    </div>
+
+    <AgencyFormModal open={agFormOpen} onClose={()=>{setAgFormOpen(false);setEditAgency(null);}} editAgency={editAgency}/>
+  </div>;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ROOT APP
+═══════════════════════════════════════════════════════════ */
+function App(){
+  const [tab,setTab]=useState('dashboard');
+  const [tourFormOpen,setTourFormOpen]=useState(false);
+  const [expFormOpen,setExpFormOpen]=useState(false);
+  const [reportsOpen,setReportsOpen]=useState(false);
+
+  const tabs=[
+    {id:'dashboard',icon:'chart-bar',label:'Bilanço'},
+    {id:'calendar',icon:'calendar',label:'Takvim'},
+    {id:'tours',icon:'map',label:'Turlar'},
+    {id:'expenses',icon:'wallet',label:'Giderler'},
+    {id:'settings',icon:'cog',label:'Ayarlar'},
+  ];
+
+  return (
+    <AppProvider>
+      <div className="flex flex-col" style={{height:'100dvh',maxWidth:430,margin:'0 auto'}}>
+        {/* Header */}
+        <div className="bg-white border-b border-stone-100 px-5 pt-safe flex items-center justify-between" style={{paddingTop:'env(safe-area-inset-top,12px)',paddingBottom:12}}>
+          <div>
+            <p className="text-xs text-stone-400">GuideTrack</p>
+            <h1 className="text-xl font-black text-stone-800">
+              {tabs.find(t=>t.id===tab)?.label||''}
+            </h1>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={()=>setTourFormOpen(true)} className="w-9 h-9 bg-amber-500 rounded-xl flex items-center justify-center text-white shadow-amber-200 shadow-md hover:bg-amber-600 active:scale-95 transition-all">
+              <i className="fas fa-plus text-sm"/>
+            </button>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-hidden flex flex-col bg-stone-50">
+          {tab==='dashboard'&&<Dashboard setTab={setTab} openTourForm={()=>setTourFormOpen(true)} openExpForm={()=>setExpFormOpen(true)} openReports={()=>setReportsOpen(true)}/>}
+          {tab==='calendar'&&<Calendar/>}
+          {tab==='tours'&&<Tours/>}
+          {tab==='expenses'&&<Expenses/>}
+          {tab==='settings'&&<Settings openReports={()=>setReportsOpen(true)}/>}
+        </div>
+
+        {/* Bottom navigation */}
+        <div className="bg-white border-t border-stone-100 flex" style={{paddingBottom:'env(safe-area-inset-bottom,8px)'}}>
+          {tabs.map(t=>(
+            <button key={t.id} onClick={()=>setTab(t.id)}
+              className={`flex-1 flex flex-col items-center pt-3 pb-2 gap-1 transition-all ${tab===t.id?'text-amber-500':'text-stone-400 hover:text-stone-600'}`}>
+              <i className={`fas fa-${t.icon} text-lg`}/>
+              <span className="text-xs font-medium">{t.label}</span>
+              {tab===t.id&&<div className="w-5 h-0.5 bg-amber-500 rounded-full"/>}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <TourFormModal open={tourFormOpen} onClose={()=>setTourFormOpen(false)}/>
+      <ExpenseFormModal open={expFormOpen} onClose={()=>setExpFormOpen(false)}/>
+      <ReportsModal open={reportsOpen} onClose={()=>setReportsOpen(false)}/>
+    </AppProvider>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
