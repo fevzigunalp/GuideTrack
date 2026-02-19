@@ -1,0 +1,50 @@
+{
+  "expo": {
+    "name": "GuideTrack",
+    "slug": "guidetrack",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#fafaf9"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.guidetrack.app",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Profil fotoğrafı seçmek için gerekli.",
+        "CFBundleLocalizations": ["tr", "en"]
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#fafaf9"
+      },
+      "package": "com.guidetrack.app",
+      "versionCode": 1,
+      "permissions": [
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro",
+      "output": "static"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "scheme": "guidetrack"
+  }
+}
