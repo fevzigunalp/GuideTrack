@@ -94,16 +94,18 @@ export default function ExpensesScreen() {
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
         renderItem={({ item }) => (
-          <ExpenseCard
-            expense={item}
-            onDelete={() => deleteExpense(item.id)}
-            onEdit={() =>
-              router.push({
-                pathname: '/expense-form',
-                params: { id: item.id },
-              })
-            }
-          />
+          <View style={{ marginBottom: 8 }}>
+            <ExpenseCard
+              expense={item}
+              onDelete={() => deleteExpense(item.id)}
+              onEdit={() =>
+                router.push({
+                  pathname: '/expense-form',
+                  params: { id: item.id },
+                })
+              }
+            />
+          </View>
         )}
         ListEmptyComponent={
           <EmptyState

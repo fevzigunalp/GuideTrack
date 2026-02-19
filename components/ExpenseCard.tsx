@@ -1,11 +1,11 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import {
-  Alert,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Swipeable } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import { Expense } from '../types';
 import { COLORS } from '../constants';
@@ -29,68 +29,72 @@ interface ExpenseCardProps {
 }
 
 export function ExpenseCard({ expense, onDelete, onEdit }: ExpenseCardProps) {
+  const swipeableRef = useRef<Swipeable>(null);
   const icon = CATEGORY_ICONS[expense.category] ?? 'ellipsis-horizontal-circle-outline';
 
   const handleDelete = () => {
-    Alert.alert(
-      'Gideri Sil',
-      `"${expense.title}" giderini silmek istediğinizden emin misiniz?`,
-      [
-        { text: 'İptal', style: 'cancel' },
-        { text: 'Sil', style: 'destructive', onPress: onDelete },
-      ],
-    );
+    swipeableRef.current?.close();
+    onDelete();
   };
 
-  return (
-    <View style={styles.card}>
-      {/* Icon */}
-      <View style={styles.iconContainer}>
-        <Ionicons name={icon} size={20} color={COLORS.primaryDark} />
-      </View>
+  const renderRightActions = () => (
+    <TouchableOpacity style={styles.deleteAction} onPress={handleDelete} activeOpacity={0.8}>
+      <Ionicons name="trash" size={20} color="#fff" />
+      <Text style={styles.deleteText}>Sil</Text>
+    </TouchableOpacity>
+  );
 
-      {/* Content */}
-      <View style={styles.content}>
-        <View style={styles.topRow}>
-          <Text style={styles.title} numberOfLines={1}>
-            {expense.title}
-          </Text>
-          <Text style={styles.amount}>{formatCurrency(expense.amount)}</Text>
+  const renderLeftActions = onEdit
+    ? () => (
+        <TouchableOpacity
+          style={styles.editAction}
+          onPress={() => { swipeableRef.current?.close(); onEdit(); }}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="pencil" size={20} color="#fff" />
+          <Text style={styles.editText}>Düzenle</Text>
+        </TouchableOpacity>
+      )
+    : undefined;
+
+  return (
+    <Swipeable
+      ref={swipeableRef}
+      renderRightActions={renderRightActions}
+      renderLeftActions={renderLeftActions}
+      overshootRight={false}
+      overshootLeft={false}
+      friction={2}
+    >
+      <View style={styles.card}>
+        {/* Icon */}
+        <View style={styles.iconContainer}>
+          <Ionicons name={icon} size={20} color={COLORS.primaryDark} />
         </View>
-        <View style={styles.bottomRow}>
-          <Text style={styles.category}>{expense.category}</Text>
-          <View style={styles.rightInfo}>
-            {expense.isRecurring && (
-              <View style={styles.recurringBadge}>
-                <Ionicons name="refresh" size={10} color={COLORS.info} />
-                <Text style={styles.recurringText}>Tekrarlayan</Text>
-              </View>
-            )}
-            <Text style={styles.date}>{formatDate(expense.date)}</Text>
+
+        {/* Content */}
+        <View style={styles.content}>
+          <View style={styles.topRow}>
+            <Text style={styles.title} numberOfLines={1}>
+              {expense.title}
+            </Text>
+            <Text style={styles.amount}>{formatCurrency(expense.amount)}</Text>
+          </View>
+          <View style={styles.bottomRow}>
+            <Text style={styles.category}>{expense.category}</Text>
+            <View style={styles.rightInfo}>
+              {expense.isRecurring && (
+                <View style={styles.recurringBadge}>
+                  <Ionicons name="refresh" size={10} color={COLORS.info} />
+                  <Text style={styles.recurringText}>Tekrarlayan</Text>
+                </View>
+              )}
+              <Text style={styles.date}>{formatDate(expense.date)}</Text>
+            </View>
           </View>
         </View>
       </View>
-
-      {/* Actions */}
-      <View style={styles.actions}>
-        {onEdit && (
-          <TouchableOpacity
-            onPress={onEdit}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            style={styles.actionBtn}
-          >
-            <Ionicons name="pencil-outline" size={16} color={COLORS.textMuted} />
-          </TouchableOpacity>
-        )}
-        <TouchableOpacity
-          onPress={handleDelete}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          style={styles.actionBtn}
-        >
-          <Ionicons name="trash-outline" size={16} color={COLORS.danger} />
-        </TouchableOpacity>
-      </View>
-    </View>
+    </Swipeable>
   );
 }
 
@@ -98,7 +102,6 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: '#fff',
     borderRadius: 14,
-    marginBottom: 8,
     flexDirection: 'row',
     alignItems: 'center',
     padding: 14,
@@ -108,6 +111,33 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.06,
     shadowRadius: 3,
     elevation: 1,
+  },
+  deleteAction: {
+    backgroundColor: COLORS.danger,
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 72,
+    borderRadius: 14,
+    marginBottom: 0,
+    gap: 4,
+  },
+  deleteText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  editAction: {
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 72,
+    borderRadius: 14,
+    gap: 4,
+  },
+  editText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
   },
   iconContainer: {
     width: 40,
@@ -167,12 +197,5 @@ const styles = StyleSheet.create({
   date: {
     fontSize: 12,
     color: COLORS.textLight,
-  },
-  actions: {
-    flexDirection: 'row',
-    gap: 4,
-  },
-  actionBtn: {
-    padding: 4,
   },
 });
